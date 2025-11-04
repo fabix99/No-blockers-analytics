@@ -37,11 +37,11 @@ wheels/
 .DS_Store
 Thumbs.db
 
-# Data files (keep examples, but ignore temp files)
+# Data files (keep templates, ignore user data and temp files)
 *.xlsx
 *.xls
 !templates/*.xlsx
-!data/examples/*.xlsx
+!data/replays/Match_Template.xlsx
 temp_*.xlsx
 *.numbers
 *.mov
