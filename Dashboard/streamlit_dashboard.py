@@ -172,13 +172,25 @@ def load_match_data_from_path(file_path: str) -> bool:
         return False
     
     try:
-        # Extract opponent name from filename
+        # Extract opponent name and date from filename
         filename = os.path.basename(file_path)
         opponent_name = _extract_opponent_name(filename)
+        
+        # Extract date from filename
+        import re
+        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+        match_date = None
+        if date_match:
+            try:
+                match_date = datetime.strptime(date_match.group(1), '%Y-%m-%d').date()
+            except:
+                pass
         
         # Store in session state for use in header
         SessionStateManager.set_opponent_name(opponent_name)
         SessionStateManager.set_match_filename(filename)
+        if match_date:
+            st.session_state['match_date'] = match_date
         
         # Check which format the file uses by examining sheet names
         xl_file = pd.ExcelFile(file_path)
@@ -320,13 +332,25 @@ def load_match_data(uploaded_file) -> bool:
             st.error(f"❌ File validation failed: {error_msg}")
             return False
     
-    # Extract opponent name from filename
+    # Extract opponent name and date from filename
     filename = uploaded_file.name
     opponent_name = _extract_opponent_name(filename)
+    
+    # Extract date from filename
+    import re
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+    match_date = None
+    if date_match:
+        try:
+            match_date = datetime.strptime(date_match.group(1), '%Y-%m-%d').date()
+        except:
+            pass
     
     # Store in session state for use in header
     SessionStateManager.set_opponent_name(opponent_name)
     SessionStateManager.set_match_filename(filename)
+    if match_date:
+        st.session_state['match_date'] = match_date
     
     temp_file_path = None
     temp_converted_path = None
@@ -813,11 +837,63 @@ def main():
     
     with col_header1:
         opponent = SessionStateManager.get_opponent_name()
-        opponent_text = f" vs {opponent}" if opponent else ""
+        match_date = st.session_state.get('match_date')
+        
+        # Format the subtitle
+        if opponent:
+            # Try to extract date from filename if match_date not available
+            if not match_date:
+                filename = SessionStateManager.get_match_filename() or ''
+                import re
+                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+                if date_match:
+                    try:
+                        match_date = datetime.strptime(date_match.group(1), '%Y-%m-%d').date()
+                    except:
+                        pass
+            
+            # Format date as "24th of October 2025"
+            if match_date:
+                # Convert string to date if needed
+                if isinstance(match_date, str):
+                    try:
+                        match_date = datetime.strptime(match_date, '%Y-%m-%d').date()
+                    except:
+                        match_date = None
+                
+                # Convert datetime to date if needed
+                if match_date and hasattr(match_date, 'date'):
+                    try:
+                        match_date = match_date.date()
+                    except:
+                        pass
+                
+                if match_date and hasattr(match_date, 'day'):
+                    # Format day with ordinal suffix (1st, 2nd, 3rd, 4th, etc.)
+                    day = match_date.day
+                    if 10 <= day % 100 <= 20:
+                        suffix = 'th'
+                    else:
+                        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+                    
+                    # Format month name
+                    month_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                                 'July', 'August', 'September', 'October', 'November', 'December']
+                    month_name = month_names[match_date.month - 1]
+                    
+                    formatted_date = f"{day}{suffix} of {month_name} {match_date.year}"
+                    opponent_text = f" vs {opponent} on {formatted_date}"
+                else:
+                    opponent_text = f" vs {opponent}"
+            else:
+                opponent_text = f" vs {opponent}"
+        else:
+            opponent_text = ""
+        
         st.markdown(f"""
         <div class="main-header">
             <span class="brand-name">⚫ NO BLOCKERS</span>
-            <span class="subtitle">Team Analytics{opponent_text}</span>
+            <span class="subtitle">Match Analysis{opponent_text}</span>
         </div>
         """, unsafe_allow_html=True)
     
