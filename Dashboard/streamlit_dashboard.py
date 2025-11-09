@@ -159,160 +159,6 @@ def clear_session_state() -> None:
     """Clear session state when loading new match, keeping only essential keys."""
     SessionStateManager.clear_match_data()
 
-def load_match_data_from_path(file_path: str) -> bool:
-    """Load match data from a file path (for auto-refresh functionality).
-    
-    Args:
-        file_path: Path to the Excel file
-        
-    Returns:
-        True if successful, False otherwise
-    """
-    if not file_path or not os.path.exists(file_path):
-        return False
-    
-    try:
-        # Extract opponent name and date from filename
-        filename = os.path.basename(file_path)
-        opponent_name = _extract_opponent_name(filename)
-        
-        # Extract date from filename
-        import re
-        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
-        match_date = None
-        if date_match:
-            try:
-                match_date = datetime.strptime(date_match.group(1), '%Y-%m-%d').date()
-            except:
-                pass
-        
-        # Store in session state for use in header
-        SessionStateManager.set_opponent_name(opponent_name)
-        SessionStateManager.set_match_filename(filename)
-        if match_date:
-            st.session_state['match_date'] = match_date
-        
-        # Check which format the file uses by examining sheet names
-        xl_file = pd.ExcelFile(file_path)
-        sheet_names = xl_file.sheet_names
-        
-        # Try Event Tracker format first (newest format)
-        if 'Individual Events' in sheet_names and 'Team Events' in sheet_names:
-            progress_bar, status_text = _create_progress_tracker()
-            
-            try:
-                analyzer, loader, temp_converted_path = _load_event_tracker_format(
-                    file_path, progress_bar, status_text
-                )
-                
-                if analyzer is None:
-                    return False
-                
-                # Additional validation after loading
-                is_valid, errors, warnings = validate_match_data(analyzer.match_data)
-                if not is_valid:
-                    progress_bar.empty()
-                    status_text.empty()
-                    _display_validation_errors(errors, "Data validation")
-                    return False
-                
-                if warnings:
-                    for warning in warnings:
-                        st.warning(f"⚠️ {warning}")
-                
-                # Store in session state
-                SessionStateManager.set_analyzer(analyzer)
-                SessionStateManager.set_loader(loader)
-                SessionStateManager.set_match_loaded(True)
-                
-                # Store data load timestamp
-                st.session_state['data_last_loaded'] = datetime.now()
-                
-                num_players = len(set(loader.individual_events['Player'].unique())) if loader.individual_events is not None else 0
-                num_sets = len(loader.sets) if loader.sets else 0
-                
-                # Clear loading indicators
-                progress_bar.empty()
-                status_text.empty()
-                
-                st.success(f"✅ Event tracker data loaded successfully! Found {num_players} players across {num_sets} sets.")
-                return True
-            except Exception as e:
-                logger.warning(f"Event tracker loader failed: {e}, trying other formats...")
-                progress_bar.empty()
-                status_text.empty()
-                raise
-        
-        # Only event-based format is supported now
-        raise Exception("Could not identify file format. Expected sheets: 'Individual Events' + 'Team Events' (event tracker format). Only event-based format is supported.")
-        
-    except ValueError as e:
-        # Validation errors - user-friendly message
-        st.error(f"❌ {str(e)}")
-        return False
-    except Exception as e:
-        st.error(f"❌ Error loading file: {str(e)}")
-        st.info("💡 Make sure your Excel file follows the correct format (Match_Template.xlsx)")
-        # Log full traceback for debugging, but don't show to user
-        logging.error(f"Error loading match data: {e}", exc_info=True)
-        return False
-
-def check_and_reload_file() -> None:
-    """Check if watched file has changed and reload if necessary."""
-    auto_refresh_enabled = st.session_state.get('auto_refresh_enabled', False)
-    file_path = st.session_state.get('watched_file_path', '')
-    
-    if not auto_refresh_enabled or not file_path:
-        return
-    
-    if not os.path.exists(file_path):
-        st.session_state['file_watch_status'] = f"⚠️ File not found: {file_path}"
-        return
-    
-    current_time = time.time()
-    last_check_time = st.session_state.get('last_file_check_time', 0)
-    check_interval = 5  # Check every 5 seconds for more responsive updates
-    
-    # Always check if enough time has passed
-    if current_time - last_check_time >= check_interval:
-        # Update last check time
-        st.session_state['last_file_check_time'] = current_time
-        
-        try:
-            # Get current file modification time
-            current_mtime = os.path.getmtime(file_path)
-            last_mtime = st.session_state.get('last_file_mtime', 0)
-            
-            # Check if file has been modified
-            if current_mtime > last_mtime:
-                # File has changed, reload it
-                st.session_state['last_file_mtime'] = current_mtime
-                st.session_state['file_watch_status'] = f"🔄 Reloading file... (Last updated: {datetime.fromtimestamp(current_mtime).strftime('%H:%M:%S')})"
-                
-                # Set flag to show refresh notification
-                st.session_state['show_refresh_notification'] = True
-                st.session_state['last_refresh_time'] = datetime.now()
-                
-                # Reload the file
-                success = load_match_data_from_path(file_path)
-                
-                if success:
-                    st.session_state['file_watch_status'] = f"✅ File reloaded successfully (Last updated: {datetime.fromtimestamp(current_mtime).strftime('%H:%M:%S')})"
-                    st.session_state['data_last_loaded'] = datetime.now()
-                    st.rerun()
-                else:
-                    st.session_state['file_watch_status'] = f"❌ Error reloading file"
-            else:
-                # File hasn't changed - update status
-                time_since_update = current_time - current_mtime
-                minutes = int(time_since_update // 60)
-                seconds = int(time_since_update % 60)
-                st.session_state['file_watch_status'] = f"✅ Watching file... (Last updated: {minutes}m {seconds}s ago)"
-        
-        except Exception as e:
-            st.session_state['file_watch_status'] = f"❌ Error checking file: {str(e)}"
-            logger.error(f"Error checking file: {e}", exc_info=True)
-
 def load_match_data(uploaded_file) -> bool:
     """Load match data from uploaded file and store in session state.
     
@@ -824,14 +670,6 @@ METRIC_DEFINITIONS = {
 def main():
     """Main Streamlit app"""
     
-    # Display refresh notification banner if data was just refreshed
-    if st.session_state.get('show_refresh_notification', False):
-        refresh_time = st.session_state.get('last_refresh_time', datetime.now())
-        refresh_time_str = refresh_time.strftime('%H:%M:%S') if isinstance(refresh_time, datetime) else str(refresh_time)
-        st.success(f"🔄 **Data Refreshed!** File was updated and reloaded at {refresh_time_str}")
-        # Clear the notification flag after showing it
-        st.session_state['show_refresh_notification'] = False
-    
     # Header with No Blockers branding - Enhanced Layout
     col_header1, col_header2 = st.columns([3, 2])
     
@@ -932,29 +770,6 @@ def main():
     
     st.sidebar.title("📊 Navigation")
     
-    # Display auto-refresh status if enabled
-    if st.session_state.get('auto_refresh_enabled', False) and st.session_state.get('watched_file_path'):
-        file_path = st.session_state.get('watched_file_path', '')
-        status = st.session_state.get('file_watch_status', '')
-        
-        # Show last check time
-        last_check_time = st.session_state.get('last_file_check_time', 0)
-        if last_check_time > 0:
-            last_check_display = datetime.fromtimestamp(last_check_time)
-            time_since_check = time.time() - last_check_time
-            if time_since_check < 60:
-                check_str = f"Last check: {int(time_since_check)}s ago"
-            else:
-                check_str = f"Last check: {int(time_since_check // 60)}m ago"
-        else:
-            check_str = "Waiting for first check..."
-        
-        if status:
-            st.sidebar.info(f"🔄 **Auto-Refresh Active**\n\n{status}\n\n{check_str}")
-        else:
-            st.sidebar.info(f"🔄 **Auto-Refresh Active**\n\nWatching file...\n\n{check_str}")
-        st.sidebar.markdown("---")
-    
     # HIGH PRIORITY 6: Handle navigation from CTAs
     nav_target = st.session_state.get('navigation_target')
     if nav_target:
@@ -1005,62 +820,6 @@ def main():
         st.info("👆 Please upload your match data file below to begin analysis.")
         st.markdown("---")
         st.markdown("### 📁 Upload Match Data")
-        
-        # Auto-refresh section
-        with st.expander("🔄 Auto-Refresh from File Path", expanded=False):
-            st.markdown("Monitor a file path and automatically reload when the file is updated.")
-            st.markdown("**How it works:** The dashboard checks the file every 15 seconds. When the file is updated, it automatically reloads the data.")
-            
-            auto_refresh_enabled = st.checkbox(
-                "Enable Auto-Refresh",
-                value=st.session_state.get('auto_refresh_enabled', False),
-                key='auto_refresh_checkbox',
-                help="Automatically reload data from file path every 15 seconds when file changes"
-            )
-            
-            st.session_state['auto_refresh_enabled'] = auto_refresh_enabled
-            
-            if auto_refresh_enabled:
-                file_path = st.text_input(
-                    "File Path",
-                    value=st.session_state.get('watched_file_path', ''),
-                    key='file_path_input',
-                    help="Enter the full path to the Excel file you want to monitor (e.g., /path/to/match_data.xlsx)"
-                )
-                
-                if file_path:
-                    st.session_state['watched_file_path'] = file_path
-                    
-                    # Initialize file watching state if not set
-                    if 'last_file_check_time' not in st.session_state:
-                        st.session_state['last_file_check_time'] = 0
-                    
-                    if 'last_file_mtime' not in st.session_state and os.path.exists(file_path):
-                        st.session_state['last_file_mtime'] = os.path.getmtime(file_path)
-                        # Load file initially
-                        load_match_data_from_path(file_path)
-                    
-                    # Check and reload if needed
-                    check_and_reload_file()
-                    
-                    # Display status
-                    status = st.session_state.get('file_watch_status', '')
-                    if status:
-                        st.info(status)
-                    
-                    # Manual reload button
-                    if st.button("🔄 Reload Now", use_container_width=True):
-                        if os.path.exists(file_path):
-                            success = load_match_data_from_path(file_path)
-                            if success:
-                                st.rerun()
-                        else:
-                            st.error(f"❌ File not found: {file_path}")
-                else:
-                    st.warning("⚠️ Please enter a file path to enable auto-refresh")
-        
-        st.markdown("---")
-        st.markdown("### 📁 Upload Match Data")
         uploaded_file = st.file_uploader(
             "Upload Match Data (Excel file)", 
             type=['xlsx'],
@@ -1073,41 +832,6 @@ def main():
             if success:
                 st.rerun()
         st.stop()
-    
-    # Check for auto-refresh before displaying content
-    # This will check every time the page reruns (on user interaction or explicit rerun)
-    if SessionStateManager.is_match_loaded():
-        check_and_reload_file()
-    
-    # Add auto-refresh mechanism using Streamlit's components
-    if st.session_state.get('auto_refresh_enabled', False) and st.session_state.get('watched_file_path'):
-        current_time = time.time()
-        last_check_time = st.session_state.get('last_file_check_time', 0)
-        check_interval = 5  # Check every 5 seconds
-        
-        if last_check_time == 0:
-            # First check - initialize
-            st.session_state['last_file_check_time'] = current_time
-            if SessionStateManager.is_match_loaded():
-                check_and_reload_file()
-        elif current_time - last_check_time >= check_interval:
-            # Time to check - check_and_reload_file will handle it
-            if SessionStateManager.is_match_loaded():
-                check_and_reload_file()
-        
-        # Always schedule next rerun to keep checking
-        # Use a shorter interval for more responsive updates
-        seconds_until_next = max(1, check_interval - (current_time - last_check_time))
-        st.markdown(
-            f"""
-            <script>
-            setTimeout(function() {{
-                window.location.reload();
-            }}, {int(seconds_until_next * 1000)});
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
     
     # Get data from session state for page display
     analyzer = SessionStateManager.get_analyzer()
@@ -1131,59 +855,6 @@ def main():
         display_player_comparison(analyzer, loader)
     
     # Footer with file uploader at the bottom
-    st.markdown("---")
-    
-    # Auto-refresh section (also available after data is loaded)
-    with st.expander("🔄 Auto-Refresh from File Path", expanded=False):
-        st.markdown("Monitor a file path and automatically reload when the file is updated.")
-        st.markdown("**How it works:** The dashboard checks the file every 15 seconds. When the file is updated, it automatically reloads the data.")
-        
-        auto_refresh_enabled = st.checkbox(
-            "Enable Auto-Refresh",
-            value=st.session_state.get('auto_refresh_enabled', False),
-            key='auto_refresh_checkbox_bottom',
-            help="Automatically reload data from file path every 15 seconds when file changes"
-        )
-        
-        st.session_state['auto_refresh_enabled'] = auto_refresh_enabled
-        
-        if auto_refresh_enabled:
-            file_path = st.text_input(
-                "File Path",
-                value=st.session_state.get('watched_file_path', ''),
-                key='file_path_input_bottom',
-                help="Enter the full path to the Excel file you want to monitor (e.g., /path/to/match_data.xlsx)"
-            )
-            
-            if file_path:
-                st.session_state['watched_file_path'] = file_path
-                
-                # Initialize file watching state if not set
-                if 'last_file_check_time' not in st.session_state:
-                    st.session_state['last_file_check_time'] = 0
-                
-                if 'last_file_mtime' not in st.session_state and os.path.exists(file_path):
-                    st.session_state['last_file_mtime'] = os.path.getmtime(file_path)
-                    # Load file initially if not already loaded
-                    if not SessionStateManager.is_match_loaded():
-                        load_match_data_from_path(file_path)
-                
-                # Display status
-                status = st.session_state.get('file_watch_status', '')
-                if status:
-                    st.info(status)
-                
-                # Manual reload button
-                if st.button("🔄 Reload Now", use_container_width=True, key='reload_button_bottom'):
-                    if os.path.exists(file_path):
-                        success = load_match_data_from_path(file_path)
-                        if success:
-                            st.rerun()
-                    else:
-                        st.error(f"❌ File not found: {file_path}")
-            else:
-                st.warning("⚠️ Please enter a file path to enable auto-refresh")
-    
     st.markdown("---")
     st.markdown(
         """
