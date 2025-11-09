@@ -85,3 +85,90 @@ def format_float(value: float, decimals: int = 2) -> str:
         return "N/A"
     return f"{value:.{decimals}f}"
 
+
+def format_percentage_with_sample_size(value: float, numerator: int, denominator: int, decimals: int = 1) -> str:
+    """Format a percentage with sample size indicator.
+    
+    Args:
+        value: Percentage value (0.35)
+        numerator: Count of successes (21)
+        denominator: Total count (50)
+        decimals: Number of decimal places for percentage
+        
+    Returns:
+        Formatted string with HTML: "35.0% <small>(21/50)</small>" or "N/A" if invalid
+    """
+    if pd.isna(value) or value is None or denominator == 0:
+        return "N/A"
+    # Use HTML to make parenthetical text smaller
+    return f"{value * 100:.{decimals}f}% <small style='font-size: 0.7em; opacity: 0.8;'>({numerator}/{denominator})</small>"
+
+
+def get_sample_size_warning(denominator: int) -> Optional[str]:
+    """Get warning message for small sample sizes.
+    
+    Args:
+        denominator: Total count/sample size
+        
+    Returns:
+        Warning message string or None if sample size is sufficient
+    """
+    if denominator < 5:
+        return "⚠️ Very low sample size - results may be unreliable"
+    elif denominator < 10:
+        return "⚠️ Low sample size - results should be interpreted with caution"
+    return None
+
+
+def should_hide_metric(denominator: int, min_threshold: int = 5) -> bool:
+    """Determine if a metric should be hidden due to insufficient sample size.
+    
+    Args:
+        denominator: Total count/sample size
+        min_threshold: Minimum sample size threshold (default: 5)
+        
+    Returns:
+        True if metric should be hidden, False otherwise
+    """
+    return denominator < min_threshold
+
+
+def calculate_confidence_interval(successes: int, total: int, confidence: float = 0.95) -> Tuple[float, float]:
+    """Calculate confidence interval for a proportion using normal approximation.
+    
+    Args:
+        successes: Number of successes
+        total: Total number of trials
+        confidence: Confidence level (default: 0.95 for 95% CI)
+        
+    Returns:
+        Tuple of (lower_bound, upper_bound) as proportions (0-1)
+    """
+    if total == 0:
+        return (0.0, 0.0)
+    
+    try:
+        from scipy import stats
+        import numpy as np
+        
+        p = successes / total
+        z = stats.norm.ppf((1 + confidence) / 2)
+        se = np.sqrt(p * (1 - p) / total)
+        
+        lower = max(0.0, p - z * se)
+        upper = min(1.0, p + z * se)
+        
+        return (lower, upper)
+    except ImportError:
+        # Fallback to simple approximation if scipy not available
+        import math
+        p = successes / total
+        # Use 1.96 for 95% CI (z-score for 0.95 confidence)
+        z = 1.96 if confidence == 0.95 else 1.645  # 1.645 for 90% CI
+        se = math.sqrt(p * (1 - p) / total)
+        
+        lower = max(0.0, p - z * se)
+        upper = min(1.0, p + z * se)
+        
+        return (lower, upper)
+

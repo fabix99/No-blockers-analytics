@@ -14,14 +14,20 @@ def load_player_image_cached(player_name: str, images_dir: str = DEFAULT_IMAGES_
     
     Args:
         player_name: Name of the player
-        images_dir: Directory containing player images
+        images_dir: Directory containing player images (relative to project root)
         
     Returns:
         PIL Image object or None if not found
     """
     from pathlib import Path
     
-    images_path = Path(images_dir)
+    # Resolve path relative to Dashboard directory (go up one level to project root)
+    # This file is in Dashboard/ui/, so parent.parent gets us to Dashboard/, then parent gets project root
+    current_file = Path(__file__)
+    dashboard_dir = current_file.parent.parent  # Go from ui/ to Dashboard/
+    project_root = dashboard_dir.parent  # Go from Dashboard/ to project root
+    images_path = project_root / images_dir
+    
     for ext in ['.jpeg', '.jpg', '.png', '.webp']:
         image_path = images_path / f"{player_name}{ext}"
         if image_path.exists():
@@ -30,6 +36,56 @@ def load_player_image_cached(player_name: str, images_dir: str = DEFAULT_IMAGES_
             except Exception as e:
                 st.warning(f"Could not load image for {player_name}: {e}")
                 return None
+    return None
+
+
+@st.cache_resource
+def load_logo_cached(logo_filename: str = "IMG_1377.JPG", images_dir: str = "assets/images"):
+    """Load team logo with caching.
+    
+    Args:
+        logo_filename: Name of the logo file (default: IMG_1377.JPG)
+        images_dir: Directory containing logo (relative to project root)
+        
+    Returns:
+        PIL Image object or None if not found
+    """
+    from pathlib import Path
+    
+    # Resolve path relative to Dashboard directory (go up one level to project root)
+    # This file is in Dashboard/ui/, so parent.parent gets us to Dashboard/, then parent gets project root
+    current_file = Path(__file__)
+    dashboard_dir = current_file.parent.parent  # Go from ui/ to Dashboard/
+    project_root = dashboard_dir.parent  # Go from Dashboard/ to project root
+    images_path = project_root / images_dir
+    
+    # Try different case variations
+    logo_variants = [
+        logo_filename,
+        logo_filename.replace('.JPG', '.jpg'),
+        logo_filename.replace('.jpg', '.JPG'),
+        logo_filename.lower(),
+        logo_filename.upper(),
+    ]
+    
+    for variant in logo_variants:
+        logo_path = images_path / variant
+        if logo_path.exists():
+            try:
+                return Image.open(logo_path)
+            except Exception as e:
+                return None
+    
+    # Also try common extensions
+    base_name = logo_filename.rsplit('.', 1)[0] if '.' in logo_filename else logo_filename
+    for ext in ['.jpeg', '.jpg', '.JPG', '.JPEG', '.png', '.PNG']:
+        logo_path = images_path / f"{base_name}{ext}"
+        if logo_path.exists():
+            try:
+                return Image.open(logo_path)
+            except Exception as e:
+                return None
+    
     return None
 
 

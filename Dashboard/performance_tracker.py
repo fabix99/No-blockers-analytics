@@ -364,12 +364,12 @@ def get_match_summary(set_results):
 def _aggregate_player_totals(loader):
     """Aggregate totals from loader.player_data (across all sets/players)."""
     totals = {
-        'Attack_Kills': 0, 'Attack_Good': 0, 'Attack_Errors': 0,
-        'Service_Aces': 0, 'Service_Good': 0, 'Service_Errors': 0,
-        'Block_Kills': 0, 'Block_Touches': 0, 'Block_Errors': 0,
-        'Reception_Good': 0, 'Reception_Errors': 0,
-        'Dig_Good': 0, 'Dig_Errors': 0,  # Add dig data
-        'Sets_Exceptional': 0, 'Sets_Good': 0, 'Sets_Errors': 0  # Add sets data
+        'Attack_Kills': 0, 'Attack_Good': 0, 'Attack_Errors': 0, 'Attack_Total': 0,
+        'Service_Aces': 0, 'Service_Good': 0, 'Service_Errors': 0, 'Service_Total': 0,
+        'Block_Kills': 0, 'Block_Touches': 0, 'Block_Errors': 0, 'Block_Total': 0,
+        'Reception_Good': 0, 'Reception_Errors': 0, 'Reception_Total': 0,
+        'Dig_Good': 0, 'Dig_Errors': 0, 'Dig_Total': 0,
+        'Sets_Exceptional': 0, 'Sets_Good': 0, 'Sets_Errors': 0, 'Sets_Total': 0
     }
     try:
         for player, info in loader.player_data.items():
@@ -385,33 +385,43 @@ def _aggregate_player_totals(loader):
     return totals
 
 def compute_team_kpis_from_loader(loader):
-    """Compute team KPIs from ExcelMatchLoader data.
+    """Compute team KPIs from EventTrackerLoader data.
     Returns a dict with friendly metrics for Team Overview.
+    Uses event-based format with aggregated stats.
     """
     totals = _aggregate_player_totals(loader)
 
-    # Attacks
-    attack_kills = totals['Attack_Kills']
-    attack_good = totals['Attack_Good']
-    attack_errors = totals['Attack_Errors']
-    attack_attempts = attack_kills + attack_good + attack_errors
+    # Attacks - use Attack_Total if available, otherwise calculate from components
+    attack_kills = totals.get('Attack_Kills', 0)
+    attack_good = totals.get('Attack_Good', 0)
+    attack_errors = totals.get('Attack_Errors', 0)
+    attack_attempts = totals.get('Attack_Total', 0)
+    if attack_attempts == 0:
+        # Fallback: calculate from components
+        attack_attempts = attack_kills + attack_good + attack_errors
     attack_kill_pct = (attack_kills / attack_attempts) if attack_attempts > 0 else 0.0
     attack_error_pct = (attack_errors / attack_attempts) if attack_attempts > 0 else 0.0
 
-    # Serves
-    service_aces = totals['Service_Aces']
-    service_good = totals['Service_Good']
-    service_errors = totals['Service_Errors']
-    serve_attempts = service_aces + service_good + service_errors
+    # Serves - use Service_Total if available, otherwise calculate from components
+    service_aces = totals.get('Service_Aces', 0)
+    service_good = totals.get('Service_Good', 0)
+    service_errors = totals.get('Service_Errors', 0)
+    serve_attempts = totals.get('Service_Total', 0)
+    if serve_attempts == 0:
+        # Fallback: calculate from components
+        serve_attempts = service_aces + service_good + service_errors
     serve_in_rate = ((service_aces + service_good) / serve_attempts) if serve_attempts > 0 else 0.0
     ace_pct = (service_aces / serve_attempts) if serve_attempts > 0 else 0.0
     serve_error_pct = (service_errors / serve_attempts) if serve_attempts > 0 else 0.0
 
-    # Blocks
-    block_kills = totals['Block_Kills']
-    block_touches = totals['Block_Touches']
-    block_errors = totals['Block_Errors']
-    block_attempts = block_kills + block_touches + block_errors
+    # Blocks - use Block_Total if available, otherwise calculate from components
+    block_kills = totals.get('Block_Kills', 0)
+    block_touches = totals.get('Block_Touches', 0)
+    block_errors = totals.get('Block_Errors', 0)
+    block_attempts = totals.get('Block_Total', 0)
+    if block_attempts == 0:
+        # Fallback: calculate from components
+        block_attempts = block_kills + block_touches + block_errors
     block_point_rate = (block_kills / block_attempts) if block_attempts > 0 else 0.0
     block_touch_rate = (block_touches / block_attempts) if block_attempts > 0 else 0.0
 
@@ -432,17 +442,27 @@ def compute_team_kpis_from_loader(loader):
     side_out_eff = (receiving_points_won / receiving_rallies) if receiving_rallies > 0 else 0.0
     break_point_rate = (serving_points_won / serving_rallies) if serving_rallies > 0 else 0.0
 
-    # Reception quality (good / (good + errors))
-    rec_good = totals['Reception_Good']
-    rec_errors = totals['Reception_Errors']
-    rec_attempts = rec_good + rec_errors
-    reception_quality = (rec_good / rec_attempts) if rec_attempts > 0 else 0.0
+    # Reception quality (good / total attempts)
+    # Note: Reception_Good includes perfect (1.0), good (1.0), and poor (0.5)
+    # Reception_Total includes all attempts (perfect + good + poor + error)
+    rec_good = totals.get('Reception_Good', 0)
+    rec_total = totals.get('Reception_Total', 0)
+    # If Reception_Total not available, calculate from good + errors (fallback)
+    if rec_total == 0:
+        rec_errors = totals.get('Reception_Errors', 0)
+        rec_total = rec_good + rec_errors
+    reception_quality = (rec_good / rec_total) if rec_total > 0 else 0.0
 
-    # Dig quality (good digs / (good + errors))
-    dig_good = totals['Dig_Good']
-    dig_errors = totals['Dig_Errors']
-    dig_attempts = dig_good + dig_errors
-    dig_rate = (dig_good / dig_attempts) if dig_attempts > 0 else 0.0
+    # Dig quality (good digs / total attempts)
+    # Note: Dig_Good includes perfect (1.0), good (1.0), and poor (0.5)
+    # Dig_Total includes all attempts (perfect + good + poor + error)
+    dig_good = totals.get('Dig_Good', 0)
+    dig_total = totals.get('Dig_Total', 0)
+    # If Dig_Total not available, calculate from good + errors (fallback)
+    if dig_total == 0:
+        dig_errors = totals.get('Dig_Errors', 0)
+        dig_total = dig_good + dig_errors
+    dig_rate = (dig_good / dig_total) if dig_total > 0 else 0.0
 
     # Block Kill Percentage (block kills / total block attempts)
     block_kill_pct = (block_kills / block_attempts) if block_attempts > 0 else 0.0
@@ -451,22 +471,38 @@ def compute_team_kpis_from_loader(loader):
     # Total points = serving_rallies + receiving_rallies (each rally is one point)
     total_points = serving_rallies + receiving_rallies
     # Include all action types in total actions
-    sets_attempts = totals['Sets_Exceptional'] + totals['Sets_Good'] + totals['Sets_Errors']
+    sets_attempts = totals.get('Sets_Total', totals.get('Sets_Exceptional', 0) + totals.get('Sets_Good', 0) + totals.get('Sets_Errors', 0))
+    rec_attempts = totals.get('Reception_Total', 0)
+    if rec_attempts == 0:
+        rec_attempts = totals.get('Reception_Good', 0) + totals.get('Reception_Errors', 0)
+    dig_attempts = totals.get('Dig_Total', 0)
+    if dig_attempts == 0:
+        dig_attempts = totals.get('Dig_Good', 0) + totals.get('Dig_Errors', 0)
     total_actions = (
         attack_attempts + serve_attempts + block_attempts + 
         rec_attempts + dig_attempts + sets_attempts
     )
     avg_actions_per_point = (total_actions / total_points) if total_points > 0 else 0.0
 
+    # New enhanced KPIs (MEDIUM PRIORITY 26-28)
+    # Attack Efficiency: (Kills - Errors) / Total Attempts
+    attack_efficiency = ((attack_kills - attack_errors) / attack_attempts) if attack_attempts > 0 else 0.0
+    
+    # Ace-to-Error Ratio: Service Aces / Service Errors
+    ace_to_error_ratio = (service_aces / service_errors) if service_errors > 0 else (service_aces if service_aces > 0 else 0.0)
+
     return {
         'attack_kill_pct': attack_kill_pct,
         'attack_error_pct': attack_error_pct,
+        'attack_efficiency': attack_efficiency,  # NEW
         'serve_in_rate': serve_in_rate,
         'ace_pct': ace_pct,
+        'ace_rate': ace_pct,  # Alias for consistency
         'serve_error_pct': serve_error_pct,
+        'ace_to_error_ratio': ace_to_error_ratio,  # NEW
         'block_point_rate': block_point_rate,
         'block_kill_pct': block_kill_pct,
-        'block_touch_rate': block_touch_rate,
+        'block_touch_rate': block_touch_rate,  # NEW
         'side_out_efficiency': side_out_eff,
         'break_point_rate': break_point_rate,
         'reception_quality': reception_quality,
@@ -474,10 +510,24 @@ def compute_team_kpis_from_loader(loader):
         'avg_actions_per_point': avg_actions_per_point,
         'totals': {
             'attack_attempts': int(attack_attempts),
+            'attack_kills': int(attack_kills),
+            'attack_errors': int(attack_errors),
             'serve_attempts': int(serve_attempts),
+            'service_aces': int(service_aces),
+            'service_good': int(service_good),
+            'service_errors': int(service_errors),
             'block_attempts': int(block_attempts),
+            'block_kills': int(block_kills),
+            'block_touches': int(block_touches),
+            'block_errors': int(block_errors),
             'serving_rallies': int(serving_rallies),
-            'receiving_rallies': int(receiving_rallies)
+            'serving_points_won': int(serving_points_won),
+            'receiving_rallies': int(receiving_rallies),
+            'receiving_points_won': int(receiving_points_won),
+            'reception_total': int(rec_total),
+            'reception_good': int(rec_good),
+            'dig_total': int(dig_total),
+            'dig_good': int(dig_good)
         }
     }
 

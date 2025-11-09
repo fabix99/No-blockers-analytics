@@ -41,10 +41,12 @@ class MatchAnalyzer:
         total_actions = len(df)
         sets_played = df['set_number'].nunique()
         
-        # Attack efficiency
+        # Attack efficiency - using event-based outcomes
         attacks = df[df['action'] == 'attack']
         attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-        attack_errors = len(attacks[attacks['outcome'] == 'error'])
+        # Attack errors include: error, blocked, out, net (all negative outcomes)
+        attack_errors = len(attacks[attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])])
+        # Attack 'defended' is a good outcome (kept in play) but not a kill
         attack_attempts = len(attacks)
         attack_efficiency = (attack_kills - attack_errors) / attack_attempts if attack_attempts > 0 else 0
         
@@ -58,14 +60,15 @@ class MatchAnalyzer:
         # Blocking stats (including block touches)
         blocks = df[df['action'] == 'block']
         block_kills = len(blocks[blocks['outcome'] == 'kill'])
-        block_touches = len(blocks[blocks['outcome'] == 'good'])  # Block touches
+        block_touches = len(blocks[blocks['outcome'] == 'touch'])  # Block touches (new outcome)
         block_errors = len(blocks[blocks['outcome'] == 'error'])
         block_attempts = len(blocks)
         block_efficiency = (block_kills - block_errors) / block_attempts if block_attempts > 0 else 0
         
         # Reception stats (for reception percentage - separate from side-out %)
         receive_actions = df[df['action'] == 'receive']
-        good_receives = len(receive_actions[receive_actions['outcome'] == 'good'])
+        # Use new outcomes: perfect, good (both count as good receptions)
+        good_receives = len(receive_actions[receive_actions['outcome'].isin(['perfect', 'good'])])
         total_receives = len(receive_actions)
         reception_percentage = good_receives / total_receives if total_receives > 0 else 0
         
@@ -114,9 +117,13 @@ class MatchAnalyzer:
                 
                 if has_receive_before_serve or (not has_our_serve and len(point_actions[point_actions['action'] == 'receive']) > 0):
                     receiving_rallies += 1
-                    # Check if we won the point (if we have a kill or opponent error, or if point_winner column exists)
-                    if 'point_winner' in point_data.columns:
-                        point_won = point_data['point_winner'].iloc[0] == 'us'
+                    # Check if we won the point (if we have a kill or opponent error, or if point won column exists)
+                    # Support both old format ('point_winner' = 'us'/'them') and new format ('Point Won' = 'yes'/'no')
+                    if 'Point Won' in point_data.columns:
+                        point_won_value = str(point_data['Point Won'].iloc[0]).strip().lower()
+                        point_won = point_won_value in ['yes', 'y', '1', 'true', 'us']
+                    elif 'point_winner' in point_data.columns:
+                        point_won = str(point_data['point_winner'].iloc[0]).strip().lower() in ['us', 'yes', 'y', '1', 'true']
                     else:
                         # Infer: if we have a kill and they don't serve again, we likely won
                         our_kills = len(point_data[point_data['outcome'] == 'kill'])
@@ -175,8 +182,12 @@ class MatchAnalyzer:
                 
                 if has_our_serve_first:
                     serving_rallies += 1
-                    if 'point_winner' in point_data.columns:
-                        point_won = point_data['point_winner'].iloc[0] == 'us'
+                    # Support both old format ('point_winner' = 'us'/'them') and new format ('Point Won' = 'yes'/'no')
+                    if 'Point Won' in point_data.columns:
+                        point_won_value = str(point_data['Point Won'].iloc[0]).strip().lower()
+                        point_won = point_won_value in ['yes', 'y', '1', 'true', 'us']
+                    elif 'point_winner' in point_data.columns:
+                        point_won = str(point_data['point_winner'].iloc[0]).strip().lower() in ['us', 'yes', 'y', '1', 'true']
                     else:
                         our_kills = len(point_data[point_data['outcome'] == 'kill'])
                         point_won = our_kills > 0
@@ -208,9 +219,12 @@ class MatchAnalyzer:
         kill_percentage = attack_kills / attack_attempts if attack_attempts > 0 else 0
         
         # Reception Efficiency: (Good Passes - Errors) / Total Reception Attempts
-        reception_efficiency = (good_receives - len(receive_actions[receive_actions['outcome'] == 'error'])) / total_receives if total_receives > 0 else 0
+        # Good passes = perfect + good (both count as good)
+        reception_errors = len(receive_actions[receive_actions['outcome'] == 'error'])
+        reception_efficiency = (good_receives - reception_errors) / total_receives if total_receives > 0 else 0
         
         # Error Rates (by action type)
+        # Attack errors include: error, blocked, out, net
         attack_error_rate = attack_errors / attack_attempts if attack_attempts > 0 else 0
         service_error_rate = service_errors / service_attempts if service_attempts > 0 else 0
         block_error_rate = block_errors / block_attempts if block_attempts > 0 else 0
@@ -271,10 +285,11 @@ class MatchAnalyzer:
         for player in players:
             player_data = df[df['player'] == player]
             
-            # Attack stats
+            # Attack stats - using event-based outcomes
             attacks = player_data[player_data['action'] == 'attack']
             attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-            attack_errors = len(attacks[attacks['outcome'] == 'error'])
+            # Attack errors include: error, blocked, out, net
+            attack_errors = len(attacks[attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])])
             attack_attempts = len(attacks)
             attack_efficiency = (attack_kills - attack_errors) / attack_attempts if attack_attempts > 0 else 0
             
@@ -292,15 +307,17 @@ class MatchAnalyzer:
             block_attempts = len(blocks)
             block_efficiency = (block_kills - block_errors) / block_attempts if block_attempts > 0 else 0
             
-            # Reception stats
+            # Reception stats - using event-based outcomes (perfect, good, poor, error)
             receives = player_data[player_data['action'] == 'receive']
-            good_receives = len(receives[receives['outcome'] == 'good'])
+            # Good receptions = perfect + good (both count as good)
+            good_receives = len(receives[receives['outcome'].isin(['perfect', 'good'])])
             total_receives = len(receives)
             reception_percentage = good_receives / total_receives if total_receives > 0 else 0
             
-            # Setting stats
+            # Setting stats - using event-based outcomes (exceptional, good, poor, error)
             sets = player_data[player_data['action'] == 'set']
-            good_sets = len(sets[sets['outcome'] == 'good'])
+            # Good sets = exceptional + good (both count as good)
+            good_sets = len(sets[sets['outcome'].isin(['exceptional', 'good'])])
             total_sets = len(sets)
             setting_percentage = good_sets / total_sets if total_sets > 0 else 0
             
@@ -345,10 +362,11 @@ class MatchAnalyzer:
             # Calculate metrics for this rotation
             total_actions = len(rotation_data)
             
-            # Attack stats
+            # Attack stats - using event-based outcomes
             attacks = rotation_data[rotation_data['action'] == 'attack']
             attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-            attack_errors = len(attacks[attacks['outcome'] == 'error'])
+            # Attack errors include: error, blocked, out, net
+            attack_errors = len(attacks[attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])])
             attack_attempts = len(attacks)
             attack_efficiency = (attack_kills - attack_errors) / attack_attempts if attack_attempts > 0 else 0
             
@@ -359,16 +377,18 @@ class MatchAnalyzer:
             service_attempts = len(serves)
             service_efficiency = (service_aces - service_errors) / service_attempts if service_attempts > 0 else 0
             
-            # Reception stats
+            # Reception stats - using event-based outcomes (perfect, good, poor, error)
             receives = rotation_data[rotation_data['action'] == 'receive']
-            good_receives = len(receives[receives['outcome'] == 'good'])
+            # Good receptions = perfect + good (both count as good)
+            good_receives = len(receives[receives['outcome'].isin(['perfect', 'good'])])
             total_receives = len(receives)
             reception_percentage = good_receives / total_receives if total_receives > 0 else 0
             
-            # Block stats
+            # Block stats - using event-based outcomes (kill, touch, error)
             blocks = rotation_data[rotation_data['action'] == 'block']
             block_kills = len(blocks[blocks['outcome'] == 'kill'])
             block_errors = len(blocks[blocks['outcome'] == 'error'])
+            # Note: 'touch' is a positive outcome (creates opportunity) but not a kill
             block_attempts = len(blocks)
             block_efficiency = (block_kills - block_errors) / block_attempts if block_attempts > 0 else 0
             

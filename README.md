@@ -5,39 +5,39 @@ A comprehensive data analysis system for volleyball team performance tracking an
 ## 📁 Project Structure
 
 ```
-volleyball_analytics/
-├── src/                          # Source code
-│   ├── dashboard/                # Dashboard application
-│   │   ├── streamlit_dashboard.py
-│   │   └── launch_dashboard.py
-│   ├── analysis/                 # Analysis tools
-│   │   ├── match_analyzer.py
-│   │   └── performance_tracker.py
-│   ├── data/                     # Data handling
-│   │   ├── collectors/           # Data collection
-│   │   │   └── match_data_collector.py
-│   │   └── loaders/              # Data loading
-│   │       └── excel_data_loader.py
-│   └── utils/                    # Utilities
-│       ├── generate_dummy_data.py
-│       └── create_match_template.py
+volleyball_analytics_v2/
+├── Dashboard/                    # Main dashboard application
+│   ├── streamlit_dashboard.py   # Main Streamlit application
+│   ├── match_analyzer.py         # Match analysis engine
+│   ├── performance_tracker.py    # Performance tracking
+│   ├── config.py                 # Configuration settings
+│   ├── excel_data_loader.py      # Excel data loading
+│   ├── event_tracker_loader.py   # Event tracking
+│   ├── logging_config.py         # Logging setup
+│   ├── streamlit_authentication.py  # Authentication
+│   ├── charts/                   # Chart generation modules
+│   │   ├── player_charts.py
+│   │   ├── team_charts.py
+│   │   └── utils.py
+│   ├── ui/                       # UI components
+│   │   ├── components.py
+│   │   ├── insights.py
+│   │   ├── player_analysis.py
+│   │   ├── player_comparison.py
+│   │   └── team_overview.py
+│   ├── utils/                    # Utility functions
+│   │   ├── formatters.py
+│   │   ├── helpers.py
+│   │   └── insights.py
+│   └── tests/                    # Test suite
+│       └── test_basic.py
 ├── templates/                    # Excel templates
 │   ├── Match_Template.xlsx
 │   └── match_tracking_template.xlsx
-├── data/                         # Data files
-│   ├── examples/                 # Example match data
-│   └── replays/                  # Video replays
 ├── assets/                       # Static assets
 │   └── images/                   # Images
 │       ├── IMG_1377.JPG
 │       └── team/                 # Player photos
-├── docs/                         # Documentation
-│   ├── README.md                 # Detailed docs (moved from root)
-│   ├── DASHBOARD_README.md
-│   ├── KPI_SUMMARY.md
-│   └── KPI_IMPLEMENTATION_STATUS.md
-├── scripts/                      # Utility scripts
-│   └── demo.py
 └── requirements.txt              # Python dependencies
 ```
 
@@ -51,21 +51,19 @@ pip install -r requirements.txt
 
 ### Launch Dashboard
 
-```bash
-python src/dashboard/launch_dashboard.py
-```
-
-Or directly with Streamlit:
+Run the dashboard directly with Streamlit:
 
 ```bash
-streamlit run src/dashboard/streamlit_dashboard.py
+streamlit run Dashboard/streamlit_dashboard.py
 ```
 
-### Run Demo
+Or from the project root:
 
 ```bash
-python scripts/demo.py
+cd Dashboard
+streamlit run streamlit_dashboard.py
 ```
+
 
 ## 📊 Features
 
@@ -88,24 +86,17 @@ python scripts/demo.py
 
 ## 🔧 Development
 
-### Generate Match Template
+The dashboard is organized as a Python package. All modules are located in the `Dashboard/` directory:
 
-```bash
-python src/utils/create_match_template.py
-```
-
-### Generate Sample Data
-
-```python
-from src.utils.generate_dummy_data import generate_sample_analysis
-filename, match_df = generate_sample_analysis()
-```
+- **Main Application**: `Dashboard/streamlit_dashboard.py`
+- **Analysis Tools**: `Dashboard/match_analyzer.py`, `Dashboard/performance_tracker.py`
+- **UI Components**: `Dashboard/ui/`
+- **Charts**: `Dashboard/charts/`
+- **Utilities**: `Dashboard/utils/`
 
 ## 📚 Documentation
 
-- **Main Documentation**: See `docs/README.md`
-- **Dashboard Guide**: See `docs/DASHBOARD_README.md`
-- **KPI Reference**: See `docs/KPI_SUMMARY.md`
+For detailed documentation, see the README files in the project.
 
 ## 🏐 For Coaches
 

@@ -1,16 +1,20 @@
 """
 Player Comparison UI Module
 """
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from match_analyzer import MatchAnalyzer
-from config import KPI_TARGETS
-from utils.helpers import get_player_position
+from config import KPI_TARGETS, OUTCOME_COLORS, CHART_HEIGHTS
+from utils.helpers import get_player_position, filter_good_receptions, filter_good_digs, filter_block_touches
 from ui.components import get_position_full_name
 from charts.utils import apply_beautiful_theme, plotly_config
+from utils.statistical_helpers import (
+    calculate_confidence_interval, get_reliability_indicator, 
+    is_sample_size_sufficient, format_ci_display, get_statistical_significance_indicator
+)
 
 
 def display_player_comparison(analyzer: MatchAnalyzer, loader=None) -> None:
@@ -18,14 +22,22 @@ def display_player_comparison(analyzer: MatchAnalyzer, loader=None) -> None:
     
     Args:
         analyzer: MatchAnalyzer instance with loaded match data
-        loader: Optional ExcelMatchLoader instance for aggregated data
+        loader: Optional EventTrackerLoader instance for aggregated data
     """
-    st.markdown('<h2 class="main-header">🏆 Player Comparison</h2>', unsafe_allow_html=True)
-    
-    player_stats = analyzer.calculate_player_metrics()
-    
-    if player_stats is None:
-        st.error("No player statistics available")
+    # MEDIUM PRIORITY 15: Error handling
+    try:
+        st.markdown('<h2 class="main-header">🏆 Player Comparison</h2>', unsafe_allow_html=True)
+        
+        player_stats = analyzer.calculate_player_metrics()
+        
+        if player_stats is None:
+            st.error("No player statistics available")
+            return
+    except Exception as e:
+        st.error(f"❌ Error displaying player comparison: {str(e)}")
+        st.info("💡 Please try refreshing the page or re-uploading your data file.")
+        import logging
+        logging.error(f"Error in display_player_comparison: {e}", exc_info=True)
         return
     
     df = analyzer.match_data
@@ -93,12 +105,435 @@ def display_player_comparison(analyzer: MatchAnalyzer, loader=None) -> None:
     
     comparison_df = pd.DataFrame(comparison_data)
     
-    # Display top performers
-    _display_top_performers(comparison_df)
+    # Consolidated top performers - visual card-based layout
+    _display_top_performers_visual(comparison_df)
     
-    # Display ratings
-    # HIDDEN: Ratings section temporarily hidden - uncomment to re-enable
-    # _display_ratings(comparison_df)
+    # Player-level breakdowns as charts (not tables)
+    _display_player_breakdowns_charts(analyzer, loader, comparison_df)
+
+
+def _display_player_breakdowns_charts(analyzer: MatchAnalyzer, loader=None, comparison_df: pd.DataFrame = None) -> None:
+    """Display player-level breakdowns as visual charts (not tables)."""
+    from utils.breakdown_helpers import get_kpi_by_player
+    
+    st.markdown("### 👥 Player Performance Breakdowns")
+    
+    # Get all players from comparison_df or all players
+    if comparison_df is not None and len(comparison_df) > 0:
+        players_to_show = comparison_df['Player'].tolist()
+    else:
+        players_to_show = None
+    
+    # Create tabs for different KPIs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Attack Kill %", "Serve In-Rate", "Reception Quality", "Block Kill %", "Dig Rate"
+    ])
+    
+    with tab1:
+        player_attack = get_kpi_by_player(loader, 'attack_kill_pct', return_totals=True) if loader else None
+        if player_attack:
+            # Filter to selected players if applicable
+            if players_to_show:
+                player_attack = {p: v for p, v in player_attack.items() if p in players_to_show}
+            
+            if player_attack:
+                # Sort by value descending
+                sorted_players = sorted(player_attack.items(), key=lambda x: x[1]['value'], reverse=True)
+                players = [p[0] for p in sorted_players]
+                values = [p[1]['value'] for p in sorted_players]
+                color = OUTCOME_COLORS.get('kill', '#28A745')
+                
+                fig = go.Figure(data=go.Bar(
+                    x=values,
+                    y=players,
+                    orientation='h',
+                    marker=dict(
+                        color=color,
+                        line=dict(color='rgba(255,255,255,0.8)', width=1.5)
+                    ),
+                    text=[f"{v:.1%}" for v in values],
+                    textposition='outside',
+                    textfont=dict(size=12, color='#050d76', family='Arial')
+                ))
+                fig.update_layout(
+                    title=dict(
+                        text="Attack Kill % by Player",
+                        font=dict(size=16, color='#050d76', family='Arial'),
+                        x=0.5,
+                        xanchor='center'
+                    ),
+                    xaxis=dict(
+                        title=dict(text="Attack Kill %", font=dict(size=13, color='#050d76')),
+                        tickformat='.0%',
+                        tickfont=dict(size=11, color='#050d76'),
+                        showgrid=True,
+                        gridcolor='rgba(0,0,0,0.05)'
+                    ),
+                    yaxis=dict(
+                        title=dict(text="Player", font=dict(size=13, color='#050d76')),
+                        tickfont=dict(size=11, color='#050d76'),
+                        autorange='reversed',
+                        showgrid=False
+                    ),
+                    height=max(400, len(players) * 45),
+                    showlegend=False,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(l=80, r=80, t=60, b=40)
+                )
+                fig = apply_beautiful_theme(fig, "Attack Kill % by Player")
+                st.plotly_chart(fig, use_container_width=True, config=plotly_config, key="breakdown_attack")
+            else:
+                st.info("No attack data available for selected players")
+        else:
+            st.info("No attack data available")
+    
+    with tab2:
+        player_serve = get_kpi_by_player(loader, 'serve_in_rate', return_totals=True) if loader else None
+        if player_serve:
+            if players_to_show:
+                player_serve = {p: v for p, v in player_serve.items() if p in players_to_show}
+            
+            if player_serve:
+                sorted_players = sorted(player_serve.items(), key=lambda x: x[1]['value'], reverse=True)
+                players = [p[0] for p in sorted_players]
+                values = [p[1]['value'] for p in sorted_players]
+                color = OUTCOME_COLORS.get('serving_rate', '#4A90E2')
+                
+                fig = go.Figure(data=go.Bar(
+                    x=values,
+                    y=players,
+                    orientation='h',
+                    marker=dict(
+                        color=color,
+                        line=dict(color='rgba(255,255,255,0.8)', width=1.5)
+                    ),
+                    text=[f"{v:.1%}" for v in values],
+                    textposition='outside',
+                    textfont=dict(size=12, color='#050d76', family='Arial')
+                ))
+                fig.update_layout(
+                    title=dict(
+                        text="Serve In-Rate by Player",
+                        font=dict(size=16, color='#050d76', family='Arial'),
+                        x=0.5,
+                        xanchor='center'
+                    ),
+                    xaxis=dict(
+                        title=dict(text="Serve In-Rate", font=dict(size=13, color='#050d76')),
+                        tickformat='.0%',
+                        tickfont=dict(size=11, color='#050d76'),
+                        showgrid=True,
+                        gridcolor='rgba(0,0,0,0.05)'
+                    ),
+                    yaxis=dict(
+                        title=dict(text="Player", font=dict(size=13, color='#050d76')),
+                        tickfont=dict(size=11, color='#050d76'),
+                        autorange='reversed',
+                        showgrid=False
+                    ),
+                    height=max(400, len(players) * 45),
+                    showlegend=False,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(l=80, r=80, t=60, b=40)
+                )
+                fig = apply_beautiful_theme(fig, "Serve In-Rate by Player")
+                st.plotly_chart(fig, use_container_width=True, config=plotly_config, key="breakdown_serve")
+            else:
+                st.info("No service data available for selected players")
+        else:
+            st.info("No service data available")
+    
+    with tab3:
+        player_rec = get_kpi_by_player(loader, 'reception_quality', return_totals=True) if loader else None
+        if player_rec:
+            if players_to_show:
+                player_rec = {p: v for p, v in player_rec.items() if p in players_to_show}
+            
+            if player_rec:
+                sorted_players = sorted(player_rec.items(), key=lambda x: x[1]['value'], reverse=True)
+                players = [p[0] for p in sorted_players]
+                values = [p[1]['value'] for p in sorted_players]
+                color = OUTCOME_COLORS.get('reception', '#50E3C2')
+                
+                fig = go.Figure(data=go.Bar(
+                    x=values,
+                    y=players,
+                    orientation='h',
+                    marker=dict(
+                        color=color,
+                        line=dict(color='rgba(255,255,255,0.8)', width=1.5)
+                    ),
+                    text=[f"{v:.1%}" for v in values],
+                    textposition='outside',
+                    textfont=dict(size=12, color='#050d76', family='Arial')
+                ))
+                fig.update_layout(
+                    title=dict(
+                        text="Reception Quality by Player",
+                        font=dict(size=16, color='#050d76', family='Arial'),
+                        x=0.5,
+                        xanchor='center'
+                    ),
+                    xaxis=dict(
+                        title=dict(text="Reception Quality", font=dict(size=13, color='#050d76')),
+                        tickformat='.0%',
+                        tickfont=dict(size=11, color='#050d76'),
+                        showgrid=True,
+                        gridcolor='rgba(0,0,0,0.05)'
+                    ),
+                    yaxis=dict(
+                        title=dict(text="Player", font=dict(size=13, color='#050d76')),
+                        tickfont=dict(size=11, color='#050d76'),
+                        autorange='reversed',
+                        showgrid=False
+                    ),
+                    height=max(400, len(players) * 45),
+                    showlegend=False,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(l=80, r=80, t=60, b=40)
+                )
+                fig = apply_beautiful_theme(fig, "Reception Quality by Player")
+                st.plotly_chart(fig, use_container_width=True, config=plotly_config, key="breakdown_reception")
+            else:
+                st.info("No reception data available for selected players")
+        else:
+            st.info("No reception data available")
+    
+    with tab4:
+        player_block = get_kpi_by_player(loader, 'block_kill_pct', return_totals=True) if loader else None
+        if player_block:
+            if players_to_show:
+                player_block = {p: v for p, v in player_block.items() if p in players_to_show}
+            
+            if player_block:
+                sorted_players = sorted(player_block.items(), key=lambda x: x[1]['value'], reverse=True)
+                players = [p[0] for p in sorted_players]
+                values = [p[1]['value'] for p in sorted_players]
+                color = OUTCOME_COLORS.get('block_kill', '#B8E986')
+                
+                fig = go.Figure(data=go.Bar(
+                    x=values,
+                    y=players,
+                    orientation='h',
+                    marker=dict(
+                        color=color,
+                        line=dict(color='rgba(255,255,255,0.8)', width=1.5)
+                    ),
+                    text=[f"{v:.1%}" for v in values],
+                    textposition='outside',
+                    textfont=dict(size=12, color='#050d76', family='Arial')
+                ))
+                fig.update_layout(
+                    title=dict(
+                        text="Block Kill % by Player",
+                        font=dict(size=16, color='#050d76', family='Arial'),
+                        x=0.5,
+                        xanchor='center'
+                    ),
+                    xaxis=dict(
+                        title=dict(text="Block Kill %", font=dict(size=13, color='#050d76')),
+                        tickformat='.0%',
+                        tickfont=dict(size=11, color='#050d76'),
+                        showgrid=True,
+                        gridcolor='rgba(0,0,0,0.05)'
+                    ),
+                    yaxis=dict(
+                        title=dict(text="Player", font=dict(size=13, color='#050d76')),
+                        tickfont=dict(size=11, color='#050d76'),
+                        autorange='reversed',
+                        showgrid=False
+                    ),
+                    height=max(400, len(players) * 45),
+                    showlegend=False,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(l=80, r=80, t=60, b=40)
+                )
+                fig = apply_beautiful_theme(fig, "Block Kill % by Player")
+                st.plotly_chart(fig, use_container_width=True, config=plotly_config, key="breakdown_block")
+            else:
+                st.info("No block data available for selected players")
+        else:
+            st.info("No block data available")
+    
+    with tab5:
+        player_dig = get_kpi_by_player(loader, 'dig_rate', return_totals=True) if loader else None
+        if player_dig:
+            if players_to_show:
+                player_dig = {p: v for p, v in player_dig.items() if p in players_to_show}
+            
+            if player_dig:
+                sorted_players = sorted(player_dig.items(), key=lambda x: x[1]['value'], reverse=True)
+                players = [p[0] for p in sorted_players]
+                values = [p[1]['value'] for p in sorted_players]
+                color = OUTCOME_COLORS.get('dig_rate', '#BD10E0')
+                
+                fig = go.Figure(data=go.Bar(
+                    x=values,
+                    y=players,
+                    orientation='h',
+                    marker=dict(
+                        color=color,
+                        line=dict(color='rgba(255,255,255,0.8)', width=1.5)
+                    ),
+                    text=[f"{v:.1%}" for v in values],
+                    textposition='outside',
+                    textfont=dict(size=12, color='#050d76', family='Arial')
+                ))
+                fig.update_layout(
+                    title=dict(
+                        text="Dig Rate by Player",
+                        font=dict(size=16, color='#050d76', family='Arial'),
+                        x=0.5,
+                        xanchor='center'
+                    ),
+                    xaxis=dict(
+                        title=dict(text="Dig Rate", font=dict(size=13, color='#050d76')),
+                        tickformat='.0%',
+                        tickfont=dict(size=11, color='#050d76'),
+                        showgrid=True,
+                        gridcolor='rgba(0,0,0,0.05)'
+                    ),
+                    yaxis=dict(
+                        title=dict(text="Player", font=dict(size=13, color='#050d76')),
+                        tickfont=dict(size=11, color='#050d76'),
+                        autorange='reversed',
+                        showgrid=False
+                    ),
+                    height=max(400, len(players) * 45),
+                    showlegend=False,
+                    plot_bgcolor='white',
+                    paper_bgcolor='white',
+                    margin=dict(l=80, r=80, t=60, b=40)
+                )
+                fig = apply_beautiful_theme(fig, "Dig Rate by Player")
+                st.plotly_chart(fig, use_container_width=True, config=plotly_config, key="breakdown_dig")
+            else:
+                st.info("No dig data available for selected players")
+        else:
+            st.info("No dig data available")
+
+
+def _display_top_performers_visual(comparison_df: pd.DataFrame) -> None:
+    """Display top performers with visual card-based leaderboard layout."""
+    st.markdown("### 🏆 Top Performers")
+    
+    # Top Attackers
+    st.markdown("#### 🎯 Top Attackers")
+    attackers_df = comparison_df[comparison_df['Attack Attempts'] > 0].copy()
+    if len(attackers_df) > 0:
+        attackers_df = attackers_df.nlargest(5, 'Attack Kill %').sort_values('Attack Kill %', ascending=False)
+        
+        for rank, (_, row) in enumerate(attackers_df.iterrows(), 1):
+            value = row['Attack Kill %']
+            player = row['Player']
+            color = OUTCOME_COLORS.get('kill', '#28A745')
+            
+            # Create card with rank badge and progress bar
+            col1, col2, col3 = st.columns([0.1, 0.3, 0.6])
+            with col1:
+                st.markdown(f"<div style='text-align: center; padding-top: 8px;'><span style='background-color: {color}; color: white; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;'>{rank}</span></div>", unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"<div style='padding-top: 8px; font-weight: 600; font-size: 15px; color: #050d76;'>{player}</div>", unsafe_allow_html=True)
+            with col3:
+                # Progress bar style
+                st.markdown(f"""
+                <div style='padding-top: 4px;'>
+                    <div style='background-color: #E0E0E0; border-radius: 10px; height: 24px; position: relative; overflow: hidden;'>
+                        <div style='background-color: {color}; width: {value*100}%; height: 100%; border-radius: 10px; transition: width 0.3s;'></div>
+                        <div style='position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 600; font-size: 13px; color: #050d76;'>{value:.1%}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("No attack data available")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Top Servers
+    st.markdown("#### 🎾 Top Servers")
+    servers_df = comparison_df[comparison_df['Service Attempts'] > 0].nlargest(5, 'Serve In-Rate').sort_values('Serve In-Rate', ascending=False)
+    if len(servers_df) > 0:
+        for rank, (_, row) in enumerate(servers_df.iterrows(), 1):
+            value = row['Serve In-Rate']
+            player = row['Player']
+            color = OUTCOME_COLORS.get('serving_rate', '#4A90E2')
+            
+            col1, col2, col3 = st.columns([0.1, 0.3, 0.6])
+            with col1:
+                st.markdown(f"<div style='text-align: center; padding-top: 8px;'><span style='background-color: {color}; color: white; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;'>{rank}</span></div>", unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"<div style='padding-top: 8px; font-weight: 600; font-size: 15px; color: #050d76;'>{player}</div>", unsafe_allow_html=True)
+            with col3:
+                st.markdown(f"""
+                <div style='padding-top: 4px;'>
+                    <div style='background-color: #E0E0E0; border-radius: 10px; height: 24px; position: relative; overflow: hidden;'>
+                        <div style='background-color: {color}; width: {value*100}%; height: 100%; border-radius: 10px; transition: width 0.3s;'></div>
+                        <div style='position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 600; font-size: 13px; color: #050d76;'>{value:.1%}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("No service data available")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Top Blockers
+    st.markdown("#### 🛡️ Top Blockers")
+    blockers_df = comparison_df[comparison_df['Block Attempts'] > 0].nlargest(5, 'Block Kill %').sort_values('Block Kill %', ascending=False)
+    if len(blockers_df) > 0:
+        for rank, (_, row) in enumerate(blockers_df.iterrows(), 1):
+            value = row['Block Kill %']
+            player = row['Player']
+            color = OUTCOME_COLORS.get('block_kill', '#B8E986')
+            
+            col1, col2, col3 = st.columns([0.1, 0.3, 0.6])
+            with col1:
+                st.markdown(f"<div style='text-align: center; padding-top: 8px;'><span style='background-color: {color}; color: white; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;'>{rank}</span></div>", unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"<div style='padding-top: 8px; font-weight: 600; font-size: 15px; color: #050d76;'>{player}</div>", unsafe_allow_html=True)
+            with col3:
+                st.markdown(f"""
+                <div style='padding-top: 4px;'>
+                    <div style='background-color: #E0E0E0; border-radius: 10px; height: 24px; position: relative; overflow: hidden;'>
+                        <div style='background-color: {color}; width: {max(value*100, 5)}%; height: 100%; border-radius: 10px; transition: width 0.3s;'></div>
+                        <div style='position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 600; font-size: 13px; color: #050d76;'>{value:.1%}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("No block data available")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Top Receivers
+    st.markdown("#### ✋ Top Receivers")
+    receivers_df = comparison_df[comparison_df['Reception Attempts'] > 0].nlargest(5, 'Reception Quality').sort_values('Reception Quality', ascending=False)
+    if len(receivers_df) > 0:
+        for rank, (_, row) in enumerate(receivers_df.iterrows(), 1):
+            value = row['Reception Quality']
+            player = row['Player']
+            color = OUTCOME_COLORS.get('reception', '#50E3C2')
+            
+            col1, col2, col3 = st.columns([0.1, 0.3, 0.6])
+            with col1:
+                st.markdown(f"<div style='text-align: center; padding-top: 8px;'><span style='background-color: {color}; color: white; border-radius: 50%; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;'>{rank}</span></div>", unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"<div style='padding-top: 8px; font-weight: 600; font-size: 15px; color: #050d76;'>{player}</div>", unsafe_allow_html=True)
+            with col3:
+                st.markdown(f"""
+                <div style='padding-top: 4px;'>
+                    <div style='background-color: #E0E0E0; border-radius: 10px; height: 24px; position: relative; overflow: hidden;'>
+                        <div style='background-color: {color}; width: {value*100}%; height: 100%; border-radius: 10px; transition: width 0.3s;'></div>
+                        <div style='position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 600; font-size: 13px; color: #050d76;'>{value:.1%}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("No reception data available")
 
 
 def _calculate_player_kpis_for_comparison(analyzer: MatchAnalyzer, player_name: str, 
@@ -112,12 +547,27 @@ def _calculate_player_kpis_for_comparison(analyzer: MatchAnalyzer, player_name: 
     
     # Attack Kill % (consistent with Team Overview)
     # Calculate for all players - will be used if they have attempts
-    attack_attempts = player_data.get('attack_attempts', 0)
+    # Try to get from loader aggregated stats first (more accurate), otherwise use player_data
+    attack_attempts = 0
+    attack_kills = 0
+    if loader and hasattr(loader, 'player_data_by_set'):
+        for set_num in loader.player_data_by_set.keys():
+            if player_name in loader.player_data_by_set[set_num]:
+                stats = loader.player_data_by_set[set_num][player_name].get('stats', {})
+                attack_attempts += float(stats.get('Attack_Total', 0) or 0)
+                attack_kills += float(stats.get('Attack_Kills', 0) or 0)
+    
+    if attack_attempts == 0:
+        # Fallback: use player_data from MatchAnalyzer
+        attack_attempts = player_data.get('attack_attempts', 0)
+        attack_kills = player_data.get('attack_kills', 0)
+    
     if attack_attempts > 0:
-        metrics['attack_kill_pct'] = player_data['attack_kills'] / attack_attempts
+        metrics['attack_kill_pct'] = attack_kills / attack_attempts
         # Also get attack good for weighted scoring
         attacks = player_df[player_df['action'] == 'attack']
-        metrics['attack_good'] = len(attacks[attacks['outcome'] == 'good'])
+        # Attack 'defended' is considered good (kept in play)
+        metrics['attack_good'] = len(attacks[attacks['outcome'] == 'defended'])
     else:
         metrics['attack_kill_pct'] = 0.0
         metrics['attack_good'] = 0
@@ -127,11 +577,26 @@ def _calculate_player_kpis_for_comparison(analyzer: MatchAnalyzer, player_name: 
     if position == 'L':
         metrics['serve_in_rate'] = 0.0
     else:
-        service_attempts = player_data.get('service_attempts', 0)
-        if service_attempts > 0:
+        # Try to get from loader aggregated stats first (more accurate), otherwise use player_data
+        service_attempts = 0
+        service_aces = 0
+        service_good = 0
+        if loader and hasattr(loader, 'player_data_by_set'):
+            for set_num in loader.player_data_by_set.keys():
+                if player_name in loader.player_data_by_set[set_num]:
+                    stats = loader.player_data_by_set[set_num][player_name].get('stats', {})
+                    service_attempts += float(stats.get('Service_Total', 0) or 0)
+                    service_aces += float(stats.get('Service_Aces', 0) or 0)
+                    service_good += float(stats.get('Service_Good', 0) or 0)
+        
+        if service_attempts == 0:
+            # Fallback: use player_data from MatchAnalyzer
+            service_attempts = player_data.get('service_attempts', 0)
             service_aces = player_data.get('service_aces', 0)
             serves = player_df[player_df['action'] == 'serve']
             service_good = len(serves[serves['outcome'] == 'good'])
+        
+        if service_attempts > 0:
             metrics['serve_in_rate'] = (service_aces + service_good) / service_attempts
         else:
             metrics['serve_in_rate'] = 0.0
@@ -151,7 +616,7 @@ def _calculate_player_kpis_for_comparison(analyzer: MatchAnalyzer, player_name: 
             receives = player_df[player_df['action'] == 'receive']
             total_receives = len(receives)
             if total_receives > 0:
-                good_receives = len(receives[receives['outcome'] == 'good'])
+                good_receives = len(filter_good_receptions(receives))
                 metrics['reception_quality'] = good_receives / total_receives
             else:
                 metrics['reception_quality'] = 0.0
@@ -159,7 +624,7 @@ def _calculate_player_kpis_for_comparison(analyzer: MatchAnalyzer, player_name: 
         receives = player_df[player_df['action'] == 'receive']
         total_receives = len(receives)
         if total_receives > 0:
-            good_receives = len(receives[receives['outcome'] == 'good'])
+            good_receives = len(filter_good_receptions(receives))
             metrics['reception_quality'] = good_receives / total_receives
         else:
             metrics['reception_quality'] = 0.0
@@ -182,12 +647,26 @@ def _calculate_player_kpis_for_comparison(analyzer: MatchAnalyzer, player_name: 
     
     # Block Kill % (consistent with Team Overview)
     # Calculate for all players - will be used if they have attempts
-    block_attempts = player_data.get('block_attempts', 0)
+    # Try to get from loader aggregated stats first (more accurate), otherwise use player_data
+    block_attempts = 0
+    block_kills = 0
+    if loader and hasattr(loader, 'player_data_by_set'):
+        for set_num in loader.player_data_by_set.keys():
+            if player_name in loader.player_data_by_set[set_num]:
+                stats = loader.player_data_by_set[set_num][player_name].get('stats', {})
+                block_attempts += float(stats.get('Block_Total', 0) or 0)
+                block_kills += float(stats.get('Block_Kills', 0) or 0)
+    
+    if block_attempts == 0:
+        # Fallback: use player_data from MatchAnalyzer
+        block_attempts = player_data.get('block_attempts', 0)
+        block_kills = player_data.get('block_kills', 0)
+    
     if block_attempts > 0:
-        metrics['block_kill_pct'] = player_data['block_kills'] / block_attempts
+        metrics['block_kill_pct'] = block_kills / block_attempts
         # Also get block touches for weighted scoring
         blocks = player_df[player_df['action'] == 'block']
-        metrics['block_touches'] = len(blocks[blocks['outcome'] == 'good'])
+        metrics['block_touches'] = len(filter_block_touches(blocks))
     else:
         metrics['block_kill_pct'] = 0.0
         metrics['block_touches'] = 0
@@ -197,7 +676,8 @@ def _calculate_player_kpis_for_comparison(analyzer: MatchAnalyzer, player_name: 
     sets = player_df[player_df['action'] == 'set']
     total_sets_count = len(sets)
     if total_sets_count > 0:
-        good_sets_count = len(sets[sets['outcome'] == 'good'])
+        # Good sets = exceptional + good (both count as good)
+        good_sets_count = len(sets[sets['outcome'].isin(['exceptional', 'good'])])
         metrics['setting_quality'] = good_sets_count / total_sets_count
     else:
         # Fallback to player_data if available
@@ -623,266 +1103,48 @@ def _calculate_player_rating_new(player_data: Dict[str, Any], position: Optional
     return rating, breakdown
 
 
-def _display_top_performers(comparison_df: pd.DataFrame) -> None:
-    """Display top performers by category with horizontal bar charts."""
-    st.markdown("### 🏆 Top Performers by Category")
-    
-    # Top Attackers
+
+
+
+
+def _display_navigation_ctas() -> None:
+    """HIGH PRIORITY 6: Display navigation CTAs in Player Comparison."""
+    st.markdown("---")
+    st.markdown("### 🔗 Navigate to Other Views")
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### 🎯 Top Attackers (Weighted: Kills 3x + Good)")
-        # Calculate weighted score: kills * 3 + good attacks
-        attackers_df = comparison_df[comparison_df['Attack Attempts'] > 0].copy()
-        if len(attackers_df) > 0:
-            attackers_df['Attack Score'] = (attackers_df['Attack Kills'] * 3 + attackers_df['Attack Good']) / attackers_df['Attack Attempts']
-            attackers_df = attackers_df.nlargest(5, 'Attack Score').sort_values('Attack Score', ascending=False)  # Sort descending: largest first = top
-            
-            fig_attack = go.Figure(data=go.Bar(
-                x=attackers_df['Attack Score'],
-                y=attackers_df['Player'],
-                orientation='h',
-                marker_color='#B8D4E6',  # Soft blue
-                text=[f"{x:.2f}" for x in attackers_df['Attack Score']],
-                textposition='outside',
-                textfont=dict(size=11, color='#040C7B')
-            ))
-            fig_attack.update_layout(
-                xaxis_title="Attack Score (Kills×3 + Good) / Attempts",
-                yaxis_title="Player",
-                xaxis=dict(tickfont=dict(color='#040C7B')),
-                yaxis=dict(tickfont=dict(color='#040C7B'), autorange='reversed'),
-                height=200,
-                showlegend=False
-            )
-            fig_attack = apply_beautiful_theme(fig_attack, "")
-            fig_attack.update_traces(marker=dict(line=dict(color='rgba(255,255,255,0.8)', width=1)))
-            st.plotly_chart(fig_attack, use_container_width=True, config=plotly_config)
-        else:
-            st.info("No attack data available")
+        if st.button("📊 View Team Overview", key="nav_comp_to_team", use_container_width=True):
+            st.session_state['navigation_target'] = 'Team Overview'
+            st.rerun()
     
     with col2:
-        st.markdown("#### 🎾 Top Servers (Serve In-Rate)")
-        servers_df = comparison_df[comparison_df['Service Attempts'] > 0].nlargest(5, 'Serve In-Rate').sort_values('Serve In-Rate', ascending=False)  # Sort descending: largest first = top
-        if len(servers_df) > 0:
-            fig_serve = go.Figure(data=go.Bar(
-                x=servers_df['Serve In-Rate'],
-                y=servers_df['Player'],
-                orientation='h',
-                marker_color='#B8D4E6',  # Soft blue
-                text=[f"{x:.1%}" for x in servers_df['Serve In-Rate']],
-                textposition='outside',
-                textfont=dict(size=11, color='#040C7B')
-            ))
-            fig_serve.update_layout(
-                xaxis_title="Serve In-Rate",
-                yaxis_title="Player",
-                xaxis=dict(tickformat='.0%', tickfont=dict(color='#040C7B')),
-                yaxis=dict(tickfont=dict(color='#040C7B'), autorange='reversed'),
-                height=200,
-                showlegend=False
-            )
-            fig_serve = apply_beautiful_theme(fig_serve, "")
-            fig_serve.update_traces(marker=dict(line=dict(color='rgba(255,255,255,0.8)', width=1)))
-            st.plotly_chart(fig_serve, use_container_width=True, config=plotly_config)
-        else:
-            st.info("No service data available")
+        if st.button("👥 View Player Analysis", key="nav_comp_to_player", use_container_width=True):
+            st.session_state['navigation_target'] = 'Player Analysis'
+            st.rerun()
     
-    # Second row
-    col3, col4 = st.columns(2)
-    
-    with col3:
-        st.markdown("#### 🛡️ Top Blockers (Weighted: Kills + Touches)")
-        # Calculate weighted score: kills + touches
-        blockers_df = comparison_df[comparison_df['Block Attempts'] > 0].copy()
-        if len(blockers_df) > 0:
-            blockers_df['Block Score'] = (blockers_df['Block Kills'] + blockers_df['Block Touches']) / blockers_df['Block Attempts']
-            blockers_df = blockers_df.nlargest(5, 'Block Score').sort_values('Block Score', ascending=False)  # Sort descending: largest first = top
-            
-            fig_block = go.Figure(data=go.Bar(
-                x=blockers_df['Block Score'],
-                y=blockers_df['Player'],
-                orientation='h',
-                marker_color='#B8D4E6',  # Soft blue
-                text=[f"{x:.2f}" for x in blockers_df['Block Score']],
-                textposition='outside',
-                textfont=dict(size=11, color='#040C7B')
-            ))
-            fig_block.update_layout(
-                xaxis_title="Block Score (Kills + Touches) / Attempts",
-                yaxis_title="Player",
-                xaxis=dict(tickfont=dict(color='#040C7B')),
-                yaxis=dict(tickfont=dict(color='#040C7B'), autorange='reversed'),
-                height=200,
-                showlegend=False
-            )
-            fig_block = apply_beautiful_theme(fig_block, "")
-            fig_block.update_traces(marker=dict(line=dict(color='rgba(255,255,255,0.8)', width=1)))
-            st.plotly_chart(fig_block, use_container_width=True, config=plotly_config)
-        else:
-            st.info("No block data available")
-    
-    with col4:
-        st.markdown("#### ✋ Top Receivers (Reception Quality)")
-        receivers_df = comparison_df[comparison_df['Reception Attempts'] > 0].nlargest(5, 'Reception Quality').sort_values('Reception Quality', ascending=False)  # Sort descending: largest first = top
-        if len(receivers_df) > 0:
-            fig_rec = go.Figure(data=go.Bar(
-                x=receivers_df['Reception Quality'],
-                y=receivers_df['Player'],
-                orientation='h',
-                marker_color='#B8D4E6',  # Soft blue
-                text=[f"{x:.1%}" for x in receivers_df['Reception Quality']],
-                textposition='outside',
-                textfont=dict(size=11, color='#040C7B')
-            ))
-            fig_rec.update_layout(
-                xaxis_title="Reception Quality",
-                yaxis_title="Player",
-                xaxis=dict(tickformat='.0%', tickfont=dict(color='#040C7B')),
-                yaxis=dict(tickfont=dict(color='#040C7B'), autorange='reversed'),
-                height=200,
-                showlegend=False
-            )
-            fig_rec = apply_beautiful_theme(fig_rec, "")
-            fig_rec.update_traces(marker=dict(line=dict(color='rgba(255,255,255,0.8)', width=1)))
-            st.plotly_chart(fig_rec, use_container_width=True, config=plotly_config)
-        else:
-            st.info("No reception data available")
-    
-    # Third row
-    col5, col6 = st.columns(2)
-    
-    with col5:
-        st.markdown("#### 🏐 Top Diggers (Dig Rate)")
-        diggers_df = comparison_df[comparison_df['Dig Rate'] > 0].nlargest(5, 'Dig Rate').sort_values('Dig Rate', ascending=False)  # Sort descending: largest first = top
-        if len(diggers_df) > 0:
-            fig_dig = go.Figure(data=go.Bar(
-                x=diggers_df['Dig Rate'],
-                y=diggers_df['Player'],
-                orientation='h',
-                marker_color='#B8D4E6',  # Soft blue
-                text=[f"{x:.1%}" for x in diggers_df['Dig Rate']],
-                textposition='outside',
-                textfont=dict(size=11, color='#040C7B')
-            ))
-            fig_dig.update_layout(
-                xaxis_title="Dig Rate",
-                yaxis_title="Player",
-                xaxis=dict(tickformat='.0%', tickfont=dict(color='#040C7B')),
-                yaxis=dict(tickfont=dict(color='#040C7B'), autorange='reversed'),
-                height=200,
-                showlegend=False
-            )
-            fig_dig = apply_beautiful_theme(fig_dig, "")
-            fig_dig.update_traces(marker=dict(line=dict(color='rgba(255,255,255,0.8)', width=1)))
-            st.plotly_chart(fig_dig, use_container_width=True, config=plotly_config)
-        else:
-            st.info("No dig data available")
-    
-    with col6:
-        st.markdown("#### 🎯 Top Setters (Setting Quality)")
-        # Check for setters - use Total Sets > 0 OR check if Setting Quality is calculated
-        setters_df = comparison_df[(comparison_df['Total Sets'] > 0) | (comparison_df['Setting Quality'] > 0)].nlargest(5, 'Setting Quality').sort_values('Setting Quality', ascending=False)  # Sort descending: largest first = top
-        if len(setters_df) > 0:
-            fig_set = go.Figure(data=go.Bar(
-                x=setters_df['Setting Quality'],
-                y=setters_df['Player'],
-                orientation='h',
-                marker_color='#B8D4E6',  # Soft blue
-                text=[f"{x:.1%}" for x in setters_df['Setting Quality']],
-                textposition='outside',
-                textfont=dict(size=11, color='#040C7B')
-            ))
-            fig_set.update_layout(
-                xaxis_title="Setting Quality",
-                yaxis_title="Player",
-                xaxis=dict(tickformat='.0%', tickfont=dict(color='#040C7B')),
-                yaxis=dict(tickfont=dict(color='#040C7B'), autorange='reversed'),
-                height=200,
-                showlegend=False
-            )
-            fig_set = apply_beautiful_theme(fig_set, "")
-            fig_set.update_traces(marker=dict(line=dict(color='rgba(255,255,255,0.8)', width=1)))
-            st.plotly_chart(fig_set, use_container_width=True, config=plotly_config)
-        else:
-            st.info("No setting data available")
+    st.markdown("---")
 
 
-def _display_ratings(comparison_df: pd.DataFrame) -> None:
-    """Display overall player ratings with skill breakdowns."""
-    st.markdown("## ⭐ Overall Player Ratings (Out of 10)")
+def _display_export_options(comparison_df: pd.DataFrame, analyzer: MatchAnalyzer, loader=None) -> None:
+    """MEDIUM PRIORITY 14: Display export options for Player Comparison."""
+    st.markdown("### 📥 Export Player Comparison")
     
-    # Sort by rating
-    sorted_df = comparison_df.sort_values('Rating', ascending=False)
-    
-    # Create horizontal bar chart with color coding: green from 7+, red only below 5
-    # Define colors based on rating
-    def get_rating_color(rating):
-        if rating >= 7.0:
-            return '#90EE90'  # Soft green
-        elif rating >= 5.0:
-            return '#FFE4B5'  # Soft yellow/cream
-        else:
-            return '#FFB6C1'  # Soft pink/red
-    
-    colors = [get_rating_color(r) for r in sorted_df['Rating']]
-    
-    fig_rating = go.Figure(data=go.Bar(
-        x=sorted_df['Rating'],
-        y=sorted_df['Player'],
-        orientation='h',
-        marker=dict(
-            color=colors,
-            line=dict(color='rgba(255,255,255,0.8)', width=1)
-        ),
-        text=[f"{x:.1f}" for x in sorted_df['Rating']],
-        textposition='outside',
-        textfont=dict(size=11, color='#040C7B')
-    ))
-    fig_rating.update_layout(
-        title="Player Ratings Comparison (Out of 10)",
-        xaxis_title="Rating",
-        yaxis_title="Player",
-        xaxis=dict(range=[0, 10], tickfont=dict(color='#040C7B'), dtick=1),
-        yaxis=dict(tickfont=dict(color='#040C7B'), autorange='reversed'),
-        height=max(400, len(sorted_df) * 40),
-        showlegend=False
-    )
-    fig_rating = apply_beautiful_theme(fig_rating, "Player Ratings Comparison (Out of 10)")
-    st.plotly_chart(fig_rating, use_container_width=True, config=plotly_config)
-    
-    # Display ratings table with skill breakdowns
-    ratings_display_df = sorted_df[['Player', 'Position', 'Rating', 
-                                   'Attack Rating', 'Reception Rating', 'Serve Rating',
-                                   'Block Rating', 'Defense Rating', 'Setting Rating',
-                                   'Total Actions']].copy()
-    
-    # Format ratings to 1 decimal place, only show relevant ratings for each position
-    rating_cols = ['Rating', 'Attack Rating', 'Reception Rating', 'Serve Rating',
-                   'Block Rating', 'Defense Rating', 'Setting Rating']
-    for col in rating_cols:
-        if col in ratings_display_df.columns:
-            ratings_display_df[col] = ratings_display_df[col].apply(lambda x: f"{x:.1f}" if pd.notna(x) and x > 0 else "-")
-    
-    # Hide irrelevant ratings based on position
-    # Libero: no Attack Rating or Block Rating or Setting Rating
-    for idx, row in ratings_display_df.iterrows():
-        position = row['Position']
-        if 'Libero' in position:
-            # Libero: no attack, block, or setting
-            if 'Attack Rating' in ratings_display_df.columns:
-                ratings_display_df.at[idx, 'Attack Rating'] = "-"
-            if 'Block Rating' in ratings_display_df.columns:
-                ratings_display_df.at[idx, 'Block Rating'] = "-"
-            if 'Setting Rating' in ratings_display_df.columns:
-                ratings_display_df.at[idx, 'Setting Rating'] = "-"
-    
-    st.dataframe(
-        ratings_display_df,
+    from datetime import datetime
+    import io
+    excel_output = io.BytesIO()
+    with pd.ExcelWriter(excel_output, engine='openpyxl') as writer:
+        comparison_df.to_excel(writer, sheet_name='Player Comparison', index=False)
+    excel_data = excel_output.getvalue()
+    st.download_button(
+        label="📊 Export to Excel",
+        data=excel_data,
+        file_name=f"player_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
-        hide_index=True
+        help="Export player comparison table to Excel"
     )
     
-    # Add explanation
+    st.markdown("---")
 
 

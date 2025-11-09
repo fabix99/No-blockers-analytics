@@ -9,12 +9,12 @@ BEAUTIFUL_TEMPLATE = {
         'font': {
             'family': 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             'size': 13,
-            'color': '#040C7B'
+            'color': '#050d76'
         },
         'title': {
             'font': {
                 'size': 18,
-                'color': '#040C7B',
+                'color': '#050d76',
                 'family': 'Poppins, sans-serif'
             },
             'x': 0.5,
@@ -27,8 +27,8 @@ BEAUTIFUL_TEMPLATE = {
             'bgcolor': '#F5F5F5',
             'font_size': 12,
             'font_family': 'Inter, sans-serif',
-            'font_color': '#040C7B',
-            'bordercolor': '#040C7B'
+            'font_color': '#050d76',
+            'bordercolor': '#050d76'
         },
         'xaxis': {
             'gridcolor': '#E8F4F8',
@@ -50,7 +50,7 @@ BEAUTIFUL_TEMPLATE = {
             'bgcolor': 'rgba(255,255,255,0.9)',
             'bordercolor': '#E8F4F8',
             'borderwidth': 1,
-            'font': {'size': 11, 'color': '#040C7B'}
+            'font': {'size': 11, 'color': '#050d76'}
         },
         'margin': {'l': 60, 'r': 40, 't': 60, 'b': 60}
     }
@@ -100,8 +100,8 @@ def apply_beautiful_theme(fig, title=None, height=None):
         'hoverlabel': {
             'bgcolor': '#F5F5F5',
             'font_size': 12,
-            'font_color': '#040C7B',
-            'bordercolor': '#040C7B',
+            'font_color': '#050d76',
+            'bordercolor': '#050d76',
             'font_family': 'Inter, sans-serif'
         },
         'xaxis': {
@@ -111,8 +111,8 @@ def apply_beautiful_theme(fig, title=None, height=None):
             'linewidth': 1,
             'showgrid': True,
             'zeroline': False,
-            'title_font': {'size': 12, 'color': '#040C7B'},
-            'tickfont': {'color': '#040C7B'}
+            'title_font': {'size': 12, 'color': '#050d76'},
+            'tickfont': {'color': '#050d76'}
         },
         'yaxis': {
             'gridcolor': '#E8F4F8',
@@ -121,14 +121,14 @@ def apply_beautiful_theme(fig, title=None, height=None):
             'linewidth': 1,
             'showgrid': True,
             'zeroline': False,
-            'title_font': {'size': 12, 'color': '#040C7B'},
-            'tickfont': {'color': '#040C7B'}
+            'title_font': {'size': 12, 'color': '#050d76'},
+            'tickfont': {'color': '#050d76'}
         },
         'legend': {
             'bgcolor': 'rgba(255,255,255,0.9)',
             'bordercolor': '#E8F4F8',
             'borderwidth': 1,
-            'font': {'size': 11, 'color': '#040C7B'},
+            'font': {'size': 11, 'color': '#050d76'},
             'x': 1.02,
             'y': 1,
             'xanchor': 'left',
@@ -144,7 +144,7 @@ def apply_beautiful_theme(fig, title=None, height=None):
             'text': title_text,
             'font': {
                 'size': 18,
-                'color': '#040C7B',
+                'color': '#050d76',
                 'family': 'Poppins, sans-serif'
             },
             'x': 0.5,

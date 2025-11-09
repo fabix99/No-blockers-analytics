@@ -1,7 +1,7 @@
 """
 Coach-focused insights generation module
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import streamlit as st
 from match_analyzer import MatchAnalyzer
 import performance_tracker as pt
@@ -272,6 +272,211 @@ def generate_coach_summary(team_stats: Dict[str, Any], match_context: Dict[str, 
     summary['critical_areas'] = summary['critical_areas'][:3]
     
     return summary
+
+
+def generate_player_insights(player_name: str, player_data: Dict[str, Any], 
+                             position: Optional[str], kpis: Dict[str, float],
+                             team_avg_kpis: Dict[str, float]) -> Dict[str, Any]:
+    """Generate player-specific actionable recommendations with specific targets and tactical advice."""
+    from config import KPI_TARGETS
+    
+    insights = {
+        'strengths': [],
+        'weaknesses': [],
+        'recommendations': [],
+        'training_focus': [],
+        'set_analysis': {}
+    }
+    
+    # Compare player KPIs to team averages and targets
+    for kpi_name, player_value in kpis.items():
+        if player_value == 0.0:
+            continue
+        
+        team_avg = team_avg_kpis.get(kpi_name, 0.0)
+        target = KPI_TARGETS.get(kpi_name, {}).get('optimal', 0.0)
+        
+        if team_avg == 0.0 and target == 0.0:
+            continue
+        
+        # Determine if strength or weakness
+        comparison_value = team_avg if team_avg > 0 else target
+        
+        if player_value > comparison_value * 1.1:  # 10% above comparison
+            metric_display = kpi_name.replace('_', ' ').title()
+            diff = player_value - comparison_value
+            diff_pct = (diff / comparison_value * 100) if comparison_value > 0 else 0
+            insights['strengths'].append({
+                'metric': kpi_name,
+                'metric_display': metric_display,
+                'value': player_value,
+                'team_avg': team_avg,
+                'target': target,
+                'diff': diff,
+                'diff_pct': diff_pct
+            })
+        elif player_value < comparison_value * 0.9:  # 10% below comparison
+            metric_display = kpi_name.replace('_', ' ').title()
+            diff = comparison_value - player_value
+            diff_pct = (diff / comparison_value * 100) if comparison_value > 0 else 0
+            insights['weaknesses'].append({
+                'metric': kpi_name,
+                'metric_display': metric_display,
+                'value': player_value,
+                'team_avg': team_avg,
+                'target': target,
+                'diff': diff,
+                'diff_pct': diff_pct
+            })
+    
+    # Generate position-specific recommendations with specific targets
+    if position and position.startswith('OH'):
+        # Outside Hitter recommendations
+        attack_kill_pct = kpis.get('attack_kill_pct', 0)
+        target_attack = KPI_TARGETS.get('kill_percentage', {}).get('optimal', 0.42)
+        
+        if attack_kill_pct < target_attack:
+            target_improvement = target_attack - attack_kill_pct
+            insights['recommendations'].append({
+                'priority': 'high',
+                'action': f'Increase Attack Kill % from {attack_kill_pct:.1%} to {target_attack:.0%}',
+                'details': f'Target improvement: +{target_improvement:.1%}. Focus on shot selection, placement, and attacking under pressure. Work on hitting angles, power control, and off-speed shots.',
+                'specific_target': f'{target_attack:.0%}',
+                'current_value': f'{attack_kill_pct:.1%}'
+            })
+        
+        reception_quality = kpis.get('reception_quality', 0)
+        target_rec = KPI_TARGETS.get('reception_quality', {}).get('optimal', 0.75)
+        
+        if reception_quality < target_rec:
+            target_improvement = target_rec - reception_quality
+            insights['recommendations'].append({
+                'priority': 'high',
+                'action': f'Enhance Reception Quality from {reception_quality:.1%} to {target_rec:.0%}',
+                'details': f'Target improvement: +{target_improvement:.1%}. Practice serve receive drills. Work on platform work, body positioning, and reading serve trajectory.',
+                'specific_target': f'{target_rec:.0%}',
+                'current_value': f'{reception_quality:.1%}'
+            })
+        
+        # Attack type diversity
+        if attack_kill_pct > 0:
+            insights['training_focus'].append({
+                'area': 'Attack Variety',
+                'focus': 'Develop tip attacks and after-block attacks to increase unpredictability'
+            })
+    
+    elif position and position.startswith('MB'):
+        # Middle Blocker recommendations
+        block_kill_pct = kpis.get('block_kill_pct', 0)
+        target_block = KPI_TARGETS.get('block_kill_percentage', {}).get('optimal', 0.10)
+        
+        if block_kill_pct < target_block:
+            target_improvement = target_block - block_kill_pct
+            insights['recommendations'].append({
+                'priority': 'high',
+                'action': f'Improve Block Kill % from {block_kill_pct:.1%} to {target_block:.0%}',
+                'details': f'Target improvement: +{target_improvement:.1%}. Work on blocking timing, penetration, and hand positioning. Practice reading attacker approach and timing jump.',
+                'specific_target': f'{target_block:.0%}',
+                'current_value': f'{block_kill_pct:.1%}'
+            })
+        
+        attack_kill_pct = kpis.get('attack_kill_pct', 0)
+        target_attack = KPI_TARGETS.get('kill_percentage', {}).get('optimal', 0.42)
+        
+        if attack_kill_pct < target_attack:
+            insights['recommendations'].append({
+                'priority': 'medium',
+                'action': f'Improve Attack Efficiency',
+                'details': 'Focus on quick attacks and transition offense. Work on timing with setter.',
+                'specific_target': f'{target_attack:.0%}',
+                'current_value': f'{attack_kill_pct:.1%}'
+            })
+    
+    elif position == 'OPP':
+        # Opposite recommendations
+        attack_kill_pct = kpis.get('attack_kill_pct', 0)
+        target_attack = KPI_TARGETS.get('kill_percentage', {}).get('optimal', 0.42)
+        
+        if attack_kill_pct < target_attack:
+            target_improvement = target_attack - attack_kill_pct
+            insights['recommendations'].append({
+                'priority': 'high',
+                'action': f'Increase Attack Kill % from {attack_kill_pct:.1%} to {target_attack:.0%}',
+                'details': f'Target improvement: +{target_improvement:.1%}. As opposite, focus on power attacks and back-row attacks. Work on hitting through blocks.',
+                'specific_target': f'{target_attack:.0%}',
+                'current_value': f'{attack_kill_pct:.1%}'
+            })
+        
+        block_kill_pct = kpis.get('block_kill_pct', 0)
+        if block_kill_pct < 0.05:
+            insights['recommendations'].append({
+                'priority': 'medium',
+                'action': 'Improve Block Contribution',
+                'details': 'Work on blocking timing and coordination with middle blockers.',
+                'specific_target': '5%',
+                'current_value': f'{block_kill_pct:.1%}'
+            })
+    
+    elif position == 'L':
+        # Libero recommendations
+        reception_quality = kpis.get('reception_quality', 0)
+        target_rec = KPI_TARGETS.get('reception_quality', {}).get('optimal', 0.75)
+        
+        if reception_quality < target_rec:
+            target_improvement = target_rec - reception_quality
+            insights['recommendations'].append({
+                'priority': 'high',
+                'action': f'Enhance Reception Consistency from {reception_quality:.1%} to {target_rec:.0%}',
+                'details': f'Target improvement: +{target_improvement:.1%}. Focus on first contact quality. Practice reading serve trajectory and positioning. Work on platform consistency.',
+                'specific_target': f'{target_rec:.0%}',
+                'current_value': f'{reception_quality:.1%}'
+            })
+        
+        dig_rate = kpis.get('dig_rate', 0)
+        target_dig = KPI_TARGETS.get('dig_rate', {}).get('optimal', 0.70)
+        
+        if dig_rate < target_dig:
+            target_improvement = target_dig - dig_rate
+            insights['recommendations'].append({
+                'priority': 'medium',
+                'action': f'Improve Dig Rate from {dig_rate:.1%} to {target_dig:.0%}',
+                'details': f'Target improvement: +{target_improvement:.1%}. Work on defensive positioning and reaction time. Practice reading attacker approach and ball trajectory.',
+                'specific_target': f'{target_dig:.0%}',
+                'current_value': f'{dig_rate:.1%}'
+            })
+    
+    elif position == 'S' or position and 'setter' in position.lower():
+        # Setter recommendations
+        setting_quality = kpis.get('setting_quality', 0)
+        target_setting = 0.80  # Setter-specific target
+        
+        if setting_quality < target_setting:
+            target_improvement = target_setting - setting_quality
+            insights['recommendations'].append({
+                'priority': 'high',
+                'action': f'Improve Setting Consistency from {setting_quality:.1%} to {target_setting:.0%}',
+                'details': f'Target improvement: +{target_improvement:.1%}. Focus on consistent hand placement and timing. Work on setting to all positions and reading blockers.',
+                'specific_target': f'{target_setting:.0%}',
+                'current_value': f'{setting_quality:.1%}'
+            })
+        
+        insights['training_focus'].append({
+            'area': 'Set Distribution',
+            'focus': 'Ensure balanced distribution to all attackers. Work on tempo variation.'
+        })
+    
+    # Add tactical recommendations based on performance gaps
+    for weakness in insights['weaknesses']:
+        if weakness['diff_pct'] > 20:  # More than 20% below target
+            insights['recommendations'].append({
+                'priority': 'high',
+                'action': f"Address {weakness['metric_display']} Gap",
+                'details': f"Currently {weakness['value']:.1%}, target is {weakness['target']:.0%}. This is a significant gap requiring immediate attention.",
+                'specific_target': f"{weakness['target']:.0%}",
+                'current_value': f"{weakness['value']:.1%}"
+            })
+    
+    return insights
 
 
 def display_coach_insights_section(insights_data: Dict[str, Any], team_stats: Dict[str, Any],
