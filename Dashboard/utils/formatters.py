@@ -172,3 +172,85 @@ def calculate_confidence_interval(successes: int, total: int, confidence: float 
         
         return (lower, upper)
 
+
+def get_data_quality_badge(sample_size: int) -> str:
+    """Get a data quality badge based on sample size.
+    
+    Args:
+        sample_size: Number of data points
+        
+    Returns:
+        HTML badge string
+    """
+    if sample_size >= 50:
+        color = "#28a745"  # Green
+        label = "HIGH"
+        icon = "✓"
+    elif sample_size >= 20:
+        color = "#ffc107"  # Yellow
+        label = "MEDIUM"
+        icon = "○"
+    elif sample_size >= 10:
+        color = "#fd7e14"  # Orange
+        label = "LOW"
+        icon = "△"
+    else:
+        color = "#dc3545"  # Red
+        label = "VERY LOW"
+        icon = "⚠"
+    
+    return f"""
+    <span style="
+        background: {color}; 
+        color: white; 
+        padding: 2px 8px; 
+        border-radius: 4px; 
+        font-size: 11px; 
+        font-weight: 600;
+        margin-left: 8px;
+    ">{icon} n={sample_size}</span>
+    """
+
+
+def get_data_quality_indicator(sample_size: int) -> Tuple[str, str, str]:
+    """Get data quality indicator components.
+    
+    Args:
+        sample_size: Number of data points
+        
+    Returns:
+        Tuple of (emoji, label, description)
+    """
+    if sample_size >= 50:
+        return ("🟢", "High Confidence", "Large sample size provides reliable insights")
+    elif sample_size >= 20:
+        return ("🟡", "Medium Confidence", "Moderate sample size - results are reasonably reliable")
+    elif sample_size >= 10:
+        return ("🟠", "Low Confidence", "Small sample size - interpret with caution")
+    else:
+        return ("🔴", "Very Low Confidence", "Very small sample - results may not be representative")
+
+
+def format_stat_with_quality(value: float, sample_size: int, is_percentage: bool = True) -> str:
+    """Format a statistic with quality indicator.
+    
+    Args:
+        value: The statistic value
+        sample_size: Number of data points
+        is_percentage: Whether to format as percentage
+        
+    Returns:
+        Formatted string with quality badge
+    """
+    if pd.isna(value) or value is None:
+        return "N/A"
+    
+    if is_percentage:
+        formatted = f"{value * 100:.1f}%"
+    else:
+        formatted = f"{value:.2f}"
+    
+    quality_emoji, _, _ = get_data_quality_indicator(sample_size)
+    
+    return f"{formatted} {quality_emoji} (n={sample_size})"
+

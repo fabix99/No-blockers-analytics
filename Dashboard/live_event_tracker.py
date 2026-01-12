@@ -277,7 +277,7 @@ def import_existing_match(uploaded_file) -> Optional[Dict[str, any]]:
         if date_match:
             try:
                 match_date = datetime.strptime(date_match.group(1), '%Y-%m-%d').date()
-            except:
+            except (ValueError, AttributeError):
                 pass
         
         # Extract opponent name - try Format 1 first (date at start)
@@ -361,6 +361,7 @@ def initialize_session_state() -> None:
         'opponent_sets_won': 0,
         'opponent_name': '',
         'match_date': datetime.now().date(),
+        '_last_counted_set': 0,  # Track which set was last counted to prevent double-counting
         # Form state variables
         'selected_player': None,
         'selected_player_pos': None,
@@ -373,6 +374,14 @@ def initialize_session_state() -> None:
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+def has_libero() -> bool:
+    """Return True if a libero name has been configured."""
+    players = st.session_state.get('players', {})
+    libero_name = players.get('L', '')
+    if libero_name is None:
+        return False
+    return bool(str(libero_name).strip())
 
 def can_add_event() -> bool:
     """Check if events can be added (match not complete, no pending confirmations)."""
@@ -538,26 +547,36 @@ def auto_end_point(point_won: bool) -> None:
     # Update point type for next point
     st.session_state.point_type = POINT_TYPE_SERVING if point_won else POINT_TYPE_RECEIVING
     
-    # Check for set win
-    set_won_by_us, set_won_by_opponent = check_set_win(
-        st.session_state.our_score,
-        st.session_state.opponent_score
-    )
-    
-    if set_won_by_us:
-        st.session_state.sets_won += 1
-        if st.session_state.sets_won >= MATCH_WIN_SETS:
-            st.session_state.match_complete = True
-        else:
-            st.session_state.show_set_confirmation = True
-            st.session_state.set_winner = "Your Team"
-    elif set_won_by_opponent:
-        st.session_state.opponent_sets_won += 1
-        if st.session_state.opponent_sets_won >= MATCH_WIN_SETS:
-            st.session_state.match_complete = True
-        else:
-            st.session_state.show_set_confirmation = True
-            st.session_state.set_winner = "Opponent"
+    # Check for set win (only if not already confirmed for this set)
+    # Prevent double-counting by checking if set confirmation is already showing
+    # and by tracking which set was last counted
+    last_counted_set = st.session_state.get('_last_counted_set', 0)
+    if not st.session_state.get('show_set_confirmation', False) and last_counted_set < st.session_state.current_set:
+        set_won_by_us, set_won_by_opponent = check_set_win(
+            st.session_state.our_score,
+            st.session_state.opponent_score
+        )
+        
+        if set_won_by_us:
+            st.session_state.sets_won += 1
+            # Mark this set as counted
+            st.session_state['_last_counted_set'] = st.session_state.current_set
+            # Only mark match complete if we've won 3 sets
+            if st.session_state.sets_won >= MATCH_WIN_SETS:
+                st.session_state.match_complete = True
+            else:
+                st.session_state.show_set_confirmation = True
+                st.session_state.set_winner = "Your Team"
+        elif set_won_by_opponent:
+            st.session_state.opponent_sets_won += 1
+            # Mark this set as counted
+            st.session_state['_last_counted_set'] = st.session_state.current_set
+            # Only mark match complete if opponent has won 3 sets
+            if st.session_state.opponent_sets_won >= MATCH_WIN_SETS:
+                st.session_state.match_complete = True
+            else:
+                st.session_state.show_set_confirmation = True
+                st.session_state.set_winner = "Opponent"
     
     # Reset rally state
     st.session_state.current_rally_events = []
@@ -1131,11 +1150,12 @@ def get_player_at_rotation(rotation: int) -> Optional[str]:
     
     # Check for Libero substitution
     player_name = st.session_state.players.get(position_code)
+    libero_active = has_libero()
     
     # Libero substitution logic
     if position_code in ['MB1', 'MB2']:
         libero_name = st.session_state.players.get('L')
-        if libero_name and player_name:
+        if libero_active and libero_name and player_name:
             # Check if this MB is in back row (positions 1, 5, or 6)
             is_back_row = rotation in [1, 5, 6]
             is_serving = st.session_state.point_type == POINT_TYPE_SERVING
@@ -1183,7 +1203,7 @@ def get_players_on_court() -> Set[str]:
     # Always include Libero if they're on court (they replace MB)
     # Check if Libero is actually on court by checking if any MB is replaced
     libero_name = st.session_state.players.get('L')
-    if libero_name:
+    if has_libero() and libero_name:
         # Check if Libero is on court (replacing MB in back row)
         for rotation_pos in range(1, 7):
             player_name = get_player_at_rotation(rotation_pos)
@@ -1692,7 +1712,7 @@ def get_available_actions(selected_position: Optional[str] = None) -> List[str]:
     available = VALID_ACTIONS.copy()
     
     # 1. Libero restrictions
-    if selected_position == 'L':
+    if selected_position == 'L' and has_libero():
         available = [a for a in available if a not in LIBERO_RESTRICTED_ACTIONS]
     
     # 2. Point type restrictions
@@ -1793,10 +1813,11 @@ def render_event_entry_form() -> None:
                 with [col2, col3, col4, col5, col6, col7][i-2]:
                     st.empty()
         else:
-            st.warning("⚠️ Libero cannot serve. Please select a different player.")
+            if has_libero():
+                st.warning("⚠️ Libero cannot serve. Please select a different player.")
     else:
         st.markdown("**⚡ Select Action:**")
-        if st.session_state.selected_player_pos == 'L':
+        if st.session_state.selected_player_pos == 'L' and has_libero():
             st.info("ℹ️ Libero cannot serve, attack, or block")
         render_button_grid(
             available_actions,
@@ -1900,7 +1921,7 @@ def _validate_event_form() -> bool:
         return False
     
     # Libero restrictions
-    if st.session_state.selected_player_pos == 'L':
+    if st.session_state.selected_player_pos == 'L' and has_libero():
         if st.session_state.selected_action in LIBERO_RESTRICTED_ACTIONS:
             st.warning("⚠️ Libero cannot serve, attack, or block")
             return False
@@ -1910,7 +1931,7 @@ def _validate_event_form() -> bool:
         if st.session_state.selected_action != 'serve':
             st.warning("⚠️ First action must be SERVE when we're serving")
             return False
-        if st.session_state.selected_player_pos == 'L':
+        if st.session_state.selected_player_pos == 'L' and has_libero():
             st.warning("⚠️ Libero cannot serve. Please select a different player.")
             return False
     

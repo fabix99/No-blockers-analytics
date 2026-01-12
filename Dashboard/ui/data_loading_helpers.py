@@ -22,24 +22,55 @@ logger = logging.getLogger(__name__)
 def _extract_opponent_name(filename: str) -> str:
     """Extract opponent name from filename.
     
+    Handles multiple formats:
+    - "2025-10-24_Osta_Berchem_2.xlsx" -> "Osta Berchem 2"
+    - "vs Opponent.xlsx" -> "Opponent"
+    - "Match_Opponent.xlsx" -> "Opponent"
+    
     Args:
         filename: Name of the uploaded file
         
     Returns:
         Extracted opponent name or cleaned filename
     """
-    opponent_name = None
+    import re
+    
+    # Remove file extension
+    filename_clean = filename.replace('.xlsx', '').replace('.xls', '').strip()
+    
+    # Try to extract from format: YYYY-MM-DD_OpponentName
+    date_opponent_match = re.search(r'\d{4}-\d{2}-\d{2}_(.+)', filename_clean)
+    if date_opponent_match:
+        opponent_name = date_opponent_match.group(1).replace('_', ' ').strip()
+        return opponent_name.title()
+    
+    # Try format: YYYY-MM-DD_OpponentName_live or _event_tracker
+    date_opponent_match = re.search(r'\d{4}-\d{2}-\d{2}_([^_]+(?:_[^_]+)*?)(?:_(?:live|event_tracker))?$', filename_clean)
+    if date_opponent_match:
+        opponent_name = date_opponent_match.group(1).replace('_', ' ').strip()
+        return opponent_name.title()
+    
+    # Try format: OpponentName_YYYY-MM-DD
+    opponent_date_match = re.search(r'^([^_]+(?:_[^_]+)*)_\d{4}-\d{2}-\d{2}', filename_clean)
+    if opponent_date_match:
+        opponent_name = opponent_date_match.group(1).replace('_', ' ').strip()
+        return opponent_name.title()
+    
+    # Try "vs" format
     if ' vs ' in filename.lower() or ' vs. ' in filename.lower():
         parts = filename.lower().split(' vs ')
         if len(parts) > 1:
             opponent_name = parts[1].replace('.xlsx', '').replace('.xls', '').strip().title()
-    elif filename.startswith('vs '):
-        opponent_name = filename.replace('vs ', '').replace('.xlsx', '').replace('.xls', '').strip().title()
-    else:
-        # Try to extract from filename (remove extension and common prefixes)
-        opponent_name = filename.replace('.xlsx', '').replace('.xls', '').replace('Match_', '').replace('match_', '').strip()
+            return opponent_name
     
-    return opponent_name
+    # Try starting with "vs "
+    if filename.startswith('vs ') or filename.startswith('vs. '):
+        opponent_name = filename.replace('vs ', '').replace('vs. ', '').replace('.xlsx', '').replace('.xls', '').strip()
+        return opponent_name.title()
+    
+    # Fallback: remove common prefixes
+    opponent_name = filename_clean.replace('Match_', '').replace('match_', '').strip()
+    return opponent_name.title() if opponent_name else filename_clean
 
 
 def _create_progress_tracker() -> Tuple[st.progress, st.empty]:

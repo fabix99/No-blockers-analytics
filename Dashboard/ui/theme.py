@@ -290,6 +290,16 @@ DASHBOARD_CSS = """
         text-shadow: 0 2px 10px rgba(0,0,0,0.3);
     }
     
+    section[data-testid="stSidebar"] .stMarkdown h3,
+    section[data-testid="stSidebar"] h3 {
+        color: #FFFFFF !important;
+    }
+    
+    section[data-testid="stSidebar"] .stMarkdown h4,
+    section[data-testid="stSidebar"] h4 {
+        color: #FFFFFF !important;
+    }
+    
     section[data-testid="stSidebar"] .stMarkdown,
     section[data-testid="stSidebar"] p,
     section[data-testid="stSidebar"] div,
@@ -455,6 +465,17 @@ DASHBOARD_CSS = """
         color: #FFFFFF;
         font-weight: 500;
         text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    
+    /* Center sidebar images - use text-align for simpler centering */
+    section[data-testid="stSidebar"] div[data-testid="stImage"] {
+        text-align: center !important;
+        margin: 0 auto !important;
+    }
+    
+    section[data-testid="stSidebar"] div[data-testid="stImage"] img {
+        margin: 0 auto !important;
+        display: inline-block !important;
     }
     
     /* Chart containers - No Blockers theme */
@@ -738,24 +759,77 @@ DASHBOARD_CSS = """
         background-color: transparent !important;
     }
     
+    /* ========================================
+       FONT SIZE IMPROVEMENTS - Better Readability
+       ======================================== */
+    
+    /* Base font size for the app */
+    .stApp {
+        font-size: 16px;
+    }
+    
+    /* Metric values - larger and bolder */
     div[data-testid="stMetricValue"] {
-        font-size: 2.5rem !important;
+        font-size: 2.8rem !important;
         font-weight: 700 !important;
+        color: #040C7B !important;
     }
     
+    /* Metric labels - clearer */
     div[data-testid="stMetricLabel"] {
-        font-size: 1.1rem !important;
+        font-size: 1.2rem !important;
         font-weight: 600 !important;
+        color: #333 !important;
     }
     
+    /* Metric deltas */
     div[data-testid="stMetricDelta"] {
-        font-size: 1rem !important;
+        font-size: 1.1rem !important;
     }
     
-    button[key^="info_"] {
+    /* Section headers */
+    h2 {
+        font-size: 1.8rem !important;
+        font-weight: 700 !important;
+        color: #040C7B !important;
+    }
+    
+    h3 {
+        font-size: 1.5rem !important;
+        font-weight: 600 !important;
+        color: #040C7B !important;
+    }
+    
+    h4 {
         font-size: 1.3rem !important;
-        width: 32px !important;
-        height: 32px !important;
+        font-weight: 600 !important;
+        color: #333 !important;
+    }
+    
+    /* Paragraphs and body text */
+    p, .stMarkdown p {
+        font-size: 1rem !important;
+        line-height: 1.6 !important;
+    }
+    
+    /* Selectbox and dropdown labels */
+    .stSelectbox label {
+        font-size: 1.1rem !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Tab labels */
+    button[data-baseweb="tab"] {
+        font-size: 1rem !important;
+        font-weight: 500 !important;
+        padding: 10px 20px !important;
+    }
+    
+    /* Info buttons */
+    button[key^="info_"] {
+        font-size: 1.4rem !important;
+        width: 36px !important;
+        height: 36px !important;
         padding: 0 !important;
         opacity: 0.75 !important;
     }
@@ -763,6 +837,141 @@ DASHBOARD_CSS = """
     button[key^="info_"]:hover {
         opacity: 1 !important;
         transform: scale(1.15);
+    }
+    
+    /* Sidebar text */
+    .stSidebar {
+        font-size: 1rem !important;
+    }
+    
+    .stSidebar h1 {
+        font-size: 1.5rem !important;
+    }
+    
+    /* Sidebar buttons - premium styling */
+    section[data-testid="stSidebar"] .stButton > button {
+        background: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        color: #FFFFFF !important;
+        font-weight: 500 !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 1rem !important;
+        transition: all 0.2s ease !important;
+        backdrop-filter: blur(10px) !important;
+    }
+    
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+        border-color: rgba(255, 255, 255, 0.4) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+    }
+    
+    /* Alert boxes */
+    .stAlert {
+        font-size: 1rem !important;
+    }
+    
+    /* Expander headers */
+    .streamlit-expanderHeader {
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+    }
+    
+    /* ========================================
+       RESPONSIVE DESIGN - Screen Size Handling
+       ======================================== */
+    
+    /* Tablet and smaller screens */
+    @media (max-width: 992px) {
+        .main-header .brand-name {
+            font-size: 2.5rem;
+        }
+        
+        .main-header .subtitle {
+            font-size: 1.2rem;
+        }
+        
+        .main .block-container {
+            padding: 1.5rem 1rem;
+        }
+        
+        div[data-testid="stMetricValue"] {
+            font-size: 2.2rem !important;
+        }
+        
+        div[data-testid="stMetricLabel"] {
+            font-size: 1rem !important;
+        }
+        
+        h2 {
+            font-size: 1.5rem !important;
+        }
+        
+        h3 {
+            font-size: 1.3rem !important;
+        }
+    }
+    
+    /* Mobile screens */
+    @media (max-width: 768px) {
+        .main-header .brand-name {
+            font-size: 2rem;
+            letter-spacing: -1px;
+        }
+        
+        .main-header .subtitle {
+            font-size: 1rem;
+        }
+        
+        .tagline-header {
+            font-size: 0.75rem;
+            letter-spacing: 2px;
+        }
+        
+        .main .block-container {
+            padding: 1rem 0.5rem;
+            margin-top: 1rem;
+        }
+        
+        div[data-testid="stMetricValue"] {
+            font-size: 1.8rem !important;
+        }
+        
+        div[data-testid="stMetricLabel"] {
+            font-size: 0.9rem !important;
+        }
+        
+        h2 {
+            font-size: 1.3rem !important;
+        }
+        
+        h3 {
+            font-size: 1.1rem !important;
+        }
+        
+        /* Stack columns on mobile */
+        div[data-testid="column"] {
+            min-width: 100% !important;
+            margin-bottom: 1rem;
+        }
+        
+        /* Smaller tabs on mobile */
+        button[data-baseweb="tab"] {
+            font-size: 0.9rem !important;
+            padding: 8px 12px !important;
+        }
+    }
+    
+    /* Chart minimum width to prevent cramping */
+    .js-plotly-plot, .plotly {
+        min-width: 280px;
+    }
+    
+    /* Ensure charts are responsive */
+    div[data-testid="stPlotlyChart"] {
+        width: 100% !important;
+        min-width: 280px;
     }
 </style>
 """

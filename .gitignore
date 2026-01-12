@@ -1,1 +1,40 @@
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# IDE
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Streamlit
+.streamlit/
+
+# Data files (optional - uncomment if you don't want to track data)
+# data/
+# *.xlsx
+# *.xls
+# *.csv
+
+# Logs
+*.log
+logs/

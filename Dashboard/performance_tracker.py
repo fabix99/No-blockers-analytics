@@ -1,9 +1,11 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from datetime import datetime, timedelta
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class PerformanceTracker:
     """
@@ -32,7 +34,7 @@ class PerformanceTracker:
                 match_data['match_date'] = self.extract_date_from_filename(file)
                 self.all_matches.append(match_data)
             except Exception as e:
-                print(f"Error loading {file}: {e}")
+                logger.warning(f"Error loading {file}: {e}")
         
         if self.all_matches:
             self.combined_data = pd.concat(self.all_matches, ignore_index=True)
@@ -45,7 +47,7 @@ class PerformanceTracker:
             # Extract date part from filename
             date_part = filename.split('_')[2]  # Get YYYYMMDD part
             return datetime.strptime(date_part, '%Y%m%d').date()
-        except:
+        except (ValueError, IndexError, AttributeError):
             return datetime.now().date()
     
     def calculate_performance_trends(self):
@@ -378,9 +380,9 @@ def _aggregate_player_totals(loader):
                 val = stats.get(key, 0) or 0
                 try:
                     totals[key] += float(val)
-                except Exception:
+                except (ValueError, TypeError):
                     pass
-    except Exception:
+    except (AttributeError, KeyError):
         pass
     return totals
 
@@ -436,7 +438,7 @@ def compute_team_kpis_from_loader(loader):
             serving_points_won += int(stats.get('serving_points_won', 0) or 0)
             receiving_rallies += int(stats.get('receiving_rallies', 0) or 0)
             receiving_points_won += int(stats.get('receiving_points_won', 0) or 0)
-    except Exception:
+    except (AttributeError, KeyError, ValueError, TypeError):
         pass
 
     side_out_eff = (receiving_points_won / receiving_rallies) if receiving_rallies > 0 else 0.0
@@ -533,20 +535,23 @@ def compute_team_kpis_from_loader(loader):
 
 # Example usage
 if __name__ == "__main__":
+    # Configure logging for CLI usage
+    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    
     tracker = PerformanceTracker()
     
     # Generate performance report
     report = tracker.generate_performance_report()
     
     if isinstance(report, str):
-        print(report)
+        logger.info(report)
     else:
-        print("Performance Report Generated:")
-        print(f"Total Matches: {report['total_matches']}")
-        print(f"Total Actions: {report['total_actions']}")
-        print(f"Improvement Areas: {len(report['improvement_areas'])}")
-        print(f"Top Performers: {len(report['top_performers'])}")
+        logger.info("Performance Report Generated:")
+        logger.info(f"Total Matches: {report['total_matches']}")
+        logger.info(f"Total Actions: {report['total_actions']}")
+        logger.info(f"Improvement Areas: {len(report['improvement_areas'])}")
+        logger.info(f"Top Performers: {len(report['top_performers'])}")
         
         # Save report
         report_file = tracker.save_performance_report()
-        print(f"\nPerformance report saved to: {report_file}")
+        logger.info(f"Performance report saved to: {report_file}")

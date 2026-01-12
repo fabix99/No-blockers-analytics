@@ -1,6 +1,6 @@
 # 🏐 Volleyball Team Analytics System
 
-A comprehensive data analysis system for volleyball team performance tracking and tactical analysis.
+A comprehensive data analysis system for volleyball team performance tracking, tactical analysis, and live event tracking.
 
 ## 📁 Project Structure
 
@@ -8,37 +8,44 @@ A comprehensive data analysis system for volleyball team performance tracking an
 volleyball_analytics_v2/
 ├── Dashboard/                    # Main dashboard application
 │   ├── streamlit_dashboard.py   # Main Streamlit application
-│   ├── match_analyzer.py         # Match analysis engine
-│   ├── performance_tracker.py    # Performance tracking
-│   ├── config.py                 # Configuration settings
-│   ├── excel_data_loader.py      # Excel data loading
-│   ├── event_tracker_loader.py   # Event tracking
-│   ├── logging_config.py         # Logging setup
-│   ├── streamlit_authentication.py  # Authentication
-│   ├── charts/                   # Chart generation modules
+│   ├── live_event_tracker.py    # Live match event tracking
+│   ├── match_analyzer.py        # Match analysis engine
+│   ├── performance_tracker.py   # Performance tracking
+│   ├── config.py                # Configuration settings
+│   ├── event_tracker_loader.py  # Event data loading
+│   ├── streamlit_authentication.py  # Password protection module
+│   ├── charts/                  # Chart generation modules
 │   │   ├── player_charts.py
 │   │   ├── team_charts.py
 │   │   └── utils.py
-│   ├── ui/                       # UI components
+│   ├── ui/                      # UI components
 │   │   ├── components.py
 │   │   ├── insights.py
 │   │   ├── player_analysis.py
 │   │   ├── player_comparison.py
-│   │   └── team_overview.py
-│   ├── utils/                    # Utility functions
+│   │   ├── team_overview.py
+│   │   └── theme.py            # Centralized styling
+│   ├── services/                # Business logic layer
+│   │   ├── analytics_service.py
+│   │   └── session_manager.py
+│   ├── utils/                   # Utility functions
 │   │   ├── formatters.py
 │   │   ├── helpers.py
-│   │   └── insights.py
-│   └── tests/                    # Test suite
+│   │   └── export_utils.py
+│   └── tests/                   # Test suite
 │       └── test_basic.py
-├── templates/                    # Excel templates
+├── templates/                   # Excel templates
 │   ├── Match_Template.xlsx
-│   └── match_tracking_template.xlsx
-├── assets/                       # Static assets
-│   └── images/                   # Images
-│       ├── IMG_1377.JPG
-│       └── team/                 # Player photos
-└── requirements.txt              # Python dependencies
+│   ├── match_tracking_template.xlsx
+│   └── Event_Tracker_Template.xlsx
+├── data/                        # Data files
+│   └── examples/                # Example match data
+├── assets/                      # Static assets
+│   └── images/                  # Player photos & logos
+├── docs/                        # Documentation
+│   ├── DEPLOYMENT_GUIDE.md     # Streamlit Cloud deployment
+│   └── GITHUB_SETUP.md         # GitHub & Git setup
+└── requirements.txt             # Python dependencies
 ```
 
 ## 🚀 Quick Start
@@ -46,57 +53,89 @@ volleyball_analytics_v2/
 ### Installation
 
 ```bash
+cd volleyball_analytics_v2
 pip install -r requirements.txt
 ```
 
 ### Launch Dashboard
 
-Run the dashboard directly with Streamlit:
-
 ```bash
 streamlit run Dashboard/streamlit_dashboard.py
 ```
 
-Or from the project root:
+### Launch Live Event Tracker
 
 ```bash
-cd Dashboard
-streamlit run streamlit_dashboard.py
+streamlit run Dashboard/live_event_tracker.py
 ```
-
 
 ## 📊 Features
 
-### Phase 1: Foundation
-- **Match Data Collection**: Excel templates for real-time tracking
-- **Data Processing**: Python scripts for analysis and trend tracking
-- **Basic Analytics**: Performance metrics and rotation efficiency
+### Core Analytics Dashboard
+- **Team Overview**: Match-level performance metrics and KPIs
+- **Player Analysis**: Individual player statistics and trends
+- **Player Comparison**: Head-to-head comparisons between players
+- **Performance Insights**: AI-generated tactical recommendations
 
-### Phase 2: Advanced Analytics
-- **Visualization Dashboards**: Interactive Streamlit dashboard
-- **Team & Player Analysis**: Comprehensive performance breakdowns
-- **Comparison Tools**: Player and team comparison charts
+### Live Event Tracker 🆕
+- **Real-time Tracking**: Record events during live matches
+- **Court Visualization**: Visual representation of player positions
+- **Rotation Management**: Automatic rotation tracking
+- **Libero Substitutions**: Track libero in/out swaps
+- **Set-by-Set Scoring**: Live score management
+- **Export to Excel**: Download match data for later analysis
+
+### Advanced Features
+- **Service Layer**: Clean separation of business logic
+- **Session Management**: Persistent state across interactions
+- **Centralized Theming**: Consistent brand styling (No Blockers blue)
+- **Password Protection**: Optional authentication for deployments
 
 ## 📝 Usage
 
-1. **Data Collection**: Use the match tracking template (`templates/Match_Template.xlsx`) during games
-2. **Analysis**: Upload your match data to the dashboard
-3. **Visualization**: Explore team and player performance metrics
-4. **Insights**: Use the automated insights to improve team tactics
+### Match Data Collection
 
-## 🔧 Development
+1. **Using Templates**: Download templates from `templates/` folder
+2. **Live Tracking**: Use the Live Event Tracker during matches
+3. **Upload Data**: Import Excel files into the dashboard
 
-The dashboard is organized as a Python package. All modules are located in the `Dashboard/` directory:
+### Analysis Workflow
 
-- **Main Application**: `Dashboard/streamlit_dashboard.py`
-- **Analysis Tools**: `Dashboard/match_analyzer.py`, `Dashboard/performance_tracker.py`
-- **UI Components**: `Dashboard/ui/`
-- **Charts**: `Dashboard/charts/`
-- **Utilities**: `Dashboard/utils/`
+1. **Upload Match Data**: Excel file with match events
+2. **View Team Overview**: Overall performance metrics
+3. **Analyze Players**: Individual performance breakdowns
+4. **Compare Players**: Side-by-side comparisons
+5. **Get Insights**: Automated recommendations
 
-## 📚 Documentation
+## 🎨 Brand Colors
 
-For detailed documentation, see the README files in the project.
+The dashboard uses the official No Blockers team colors:
+- **Primary Blue**: `#050d76`
+- **Light Blue**: `#dbe7ff`
+- **Red Accent**: `#e21b39`
+- **Light Gray**: `#e9e9e9`
+
+## 🔒 Authentication
+
+For password-protected deployments, see `Dashboard/streamlit_authentication.py`.
+
+## 🚀 Deployment
+
+See `docs/DEPLOYMENT_GUIDE.md` for complete Streamlit Cloud deployment instructions.
+
+### Quick Deploy
+
+1. Push to GitHub (private repository)
+2. Connect to Streamlit Cloud
+3. Set main file: `Dashboard/streamlit_dashboard.py`
+4. Deploy!
+
+## 🧪 Running Tests
+
+```bash
+cd Dashboard
+pytest tests/ -v
+```
 
 ## 🏐 For Coaches
 
@@ -106,7 +145,44 @@ This system helps you:
 - Make data-driven coaching decisions
 - Monitor improvement areas
 - Share insights with players and staff
+- Track events live during matches
 
+## 📚 Documentation
 
+- **Deployment**: See `docs/DEPLOYMENT_GUIDE.md`
+- **GitHub Setup**: See `docs/GITHUB_SETUP.md`
+- **Rotation Logic**: See `Dashboard/ROTATION_SYSTEM_DETAILED.md`
+- **Point Outcomes**: See `Dashboard/POINT_OUTCOME_LOGIC.md`
 
+## 🔧 Development
 
+### Code Organization
+- **UI Components**: `Dashboard/ui/`
+- **Chart Generation**: `Dashboard/charts/`
+- **Business Logic**: `Dashboard/services/`
+- **Utilities**: `Dashboard/utils/`
+
+### Key Patterns
+- Service layer for analytics (`AnalyticsService`)
+- Session state management (`SessionStateManager`)
+- Centralized styling (`ui/theme.py`)
+- Helper function extraction for maintainability
+
+## 📦 Dependencies
+
+Core dependencies (see `requirements.txt`):
+- `streamlit>=1.28.0` - Dashboard framework
+- `pandas>=1.5.0` - Data manipulation
+- `plotly>=5.0.0` - Interactive charts
+- `openpyxl>=3.0.0` - Excel file handling
+- `pillow>=8.0.0` - Image processing
+
+## 📞 Support
+
+- [Streamlit Documentation](https://docs.streamlit.io/)
+- [Plotly Documentation](https://plotly.com/python/)
+
+---
+
+**Version:** 2.0  
+**Last Updated:** January 2025

@@ -7,10 +7,12 @@ import pandas as pd
 import plotly.graph_objects as go
 from match_analyzer import MatchAnalyzer
 from config import SETTER_THRESHOLD, CHART_COLORS, KPI_TARGETS, OUTCOME_COLORS, CHART_HEIGHTS
-from ui.components import get_position_full_name, get_position_emoji, load_player_image_cached
+from ui.components import (
+    get_position_full_name, get_position_emoji, load_player_image_cached,
+    display_player_image_and_info
+)
 from utils.helpers import get_player_position, filter_good_receptions, filter_good_digs, filter_block_touches
 from utils.formatters import format_percentage, get_performance_color
-from streamlit_dashboard import display_player_image_and_info
 from charts.player_charts import create_player_charts
 from charts.utils import apply_beautiful_theme, plotly_config
 
@@ -126,32 +128,94 @@ def _display_player_details(analyzer: MatchAnalyzer, player_name: str,
     total_sets = player_data.get('total_sets', 0)
     is_setter = total_sets > 0 and total_sets >= player_data['total_actions'] * SETTER_THRESHOLD
     
-    # MEDIUM PRIORITY 15: Try-catch blocks for all sections
-    try:
-        # Display player summary card
-        _display_player_summary_card(analyzer, player_name, player_data, position, loader)
-    except Exception as e:
-        st.warning(f"⚠️ Could not display player summary: {str(e)}")
+    # Player header with key stats
+    _display_player_header(player_name, position, player_data)
     
-    # Overview metrics are now part of the summary card
+    # Use tabs for organized content
+    tab_overview, tab_stats, tab_charts, tab_insights = st.tabs([
+        "📊 Overview", 
+        "📈 Detailed Stats", 
+        "📉 Performance Charts",
+        "💡 Insights & Training"
+    ])
     
-    try:
-        # Display detailed stats
-        _display_detailed_stats(player_name, player_data, is_setter, position, analyzer)
-    except Exception as e:
-        st.warning(f"⚠️ Could not display detailed stats: {str(e)}")
+    with tab_overview:
+        try:
+            _display_player_summary_card(analyzer, player_name, player_data, position, loader)
+        except Exception as e:
+            st.warning(f"⚠️ Could not display player summary: {str(e)}")
     
-    try:
-        # Display charts
-        create_player_charts(analyzer, player_name, loader)
-    except Exception as e:
-        st.warning(f"⚠️ Could not display player charts: {str(e)}")
+    with tab_stats:
+        try:
+            _display_detailed_stats(player_name, player_data, is_setter, position, analyzer)
+        except Exception as e:
+            st.warning(f"⚠️ Could not display detailed stats: {str(e)}")
     
-    try:
-        # HIGH PRIORITY 4: Display player-specific recommendations
-        _display_player_insights(analyzer, player_name, player_data, position, is_setter, loader)
-    except Exception as e:
-        st.info(f"ℹ️ Player insights not available: {str(e)}")
+    with tab_charts:
+        try:
+            create_player_charts(analyzer, player_name, loader)
+        except Exception as e:
+            st.warning(f"⚠️ Could not display player charts: {str(e)}")
+    
+    with tab_insights:
+        try:
+            _display_player_insights(analyzer, player_name, player_data, position, is_setter, loader)
+        except Exception as e:
+            st.info(f"ℹ️ Player insights not available: {str(e)}")
+
+
+def _display_player_header(player_name: str, position: Optional[str], player_data: Dict[str, Any]) -> None:
+    """Display a compact player header with key stats.
+    
+    Args:
+        player_name: Player's name
+        position: Player's position code
+        player_data: Player's statistics dictionary
+    """
+    position_emoji = get_position_emoji(position)
+    position_full = get_position_full_name(position)
+    
+    # Calculate key stats
+    attack_kills = player_data.get('attack_kills', 0)
+    service_aces = player_data.get('service_aces', 0)
+    block_kills = player_data.get('block_kills', 0)
+    total_points = attack_kills + service_aces + block_kills
+    
+    # Compact header with player name and key stats
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                padding: 16px 20px; border-radius: 10px; margin-bottom: 16px;
+                border-left: 5px solid #040C7B;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div>
+                <span style="font-size: 24px; font-weight: 700; color: #040C7B;">
+                    {position_emoji} {player_name}
+                </span>
+                <span style="font-size: 16px; color: #666; margin-left: 12px;">
+                    {position_full}
+                </span>
+            </div>
+            <div style="display: flex; gap: 24px; margin-top: 8px;">
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #040C7B;">{total_points}</div>
+                    <div style="font-size: 12px; color: #666;">Total Points</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #28a745;">{attack_kills}</div>
+                    <div style="font-size: 12px; color: #666;">Kills</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #6C63FF;">{service_aces}</div>
+                    <div style="font-size: 12px; color: #666;">Aces</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: 700; color: #FFD700;">{block_kills}</div>
+                    <div style="font-size: 12px; color: #666;">Blocks</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def _display_player_summary_card(analyzer: MatchAnalyzer, player_name: str, player_data: Dict[str, Any],
@@ -648,152 +712,274 @@ def _display_player_overview_metrics(analyzer: MatchAnalyzer, player_name: str, 
             pass
     
     elif position and position.startswith('OH'):
-        # Outside Hitter: Attack Kill %, Reception Quality Chart, Block Chart, Dig Chart - all as donut charts in one row
+        # Outside Hitter: Premium metric cards matching setter quality
         st.markdown("##### Performance Metrics")
-        
-        # Single row with 4 donut charts
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            # Attack Kill % as donut chart
-            _create_mini_attack_kill_chart(player_df, player_data, player_name)
-        
-        with col2:
-            # Reception Quality Chart
-            _create_mini_reception_chart(player_df, player_name)
-        
-        with col3:
-            # Block Chart
-            _create_mini_block_chart(player_df, player_name)
-        
-        with col4:
-            # Dig Chart
-            _create_mini_dig_chart(player_df, player_name)
-        
-        # Additional metrics row
-        col_serve = st.columns(1)[0]
-        with col_serve:
-            serve_in_rate = metrics.get('serve_in_rate', 0.0)
-            service_aces_count = player_data.get('service_aces', 0)
-            service_good_count = len(player_df[(player_df['action'] == 'serve') & (player_df['outcome'] == 'good')])
-            service_attempts_count = player_data.get('service_attempts', 0)
-            _display_player_metric_card(
-                "Serve In-Rate",
-                serve_in_rate,
-                KPI_TARGETS['serve_in_rate'],
-                "(Aces + Good Serves) / Total Serve Attempts",
-                f"{service_aces_count + service_good_count}/{service_attempts_count}"
-            )
-    
-    elif position and position.startswith('MB'):
-        # Middle Blocker: Attack Kill %, Block Chart, Serve In-Rate, Dig Chart - all as donut charts in one row
-        st.markdown("##### Performance Metrics")
-        
-        # Single row with 4 donut charts
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            # Attack Kill % as donut chart
-            _create_mini_attack_kill_chart(player_df, player_data, player_name)
-        
-        with col2:
-            # Block Chart
-            _create_mini_block_chart(player_df, player_name)
-        
-        with col3:
-            # Serve In-Rate as donut chart
-            _create_mini_serve_rate_chart(player_df, player_data, player_name)
-        
-        with col4:
-            # Dig Chart
-            _create_mini_dig_chart(player_df, player_name)
-    
-    elif position == 'OPP':
-        # Opposite: Attack Kill %, Block Chart, Reception Chart, Dig Chart - all as donut charts in one row
-        st.markdown("##### Performance Metrics")
-        
-        # Single row with 4 donut charts
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            # Attack Kill % as donut chart
-            _create_mini_attack_kill_chart(player_df, player_data, player_name)
-        
-        with col2:
-            # Block Chart
-            _create_mini_block_chart(player_df, player_name)
-        
-        with col3:
-            # Reception Chart
-            _create_mini_reception_chart(player_df, player_name)
-        
-        with col4:
-            # Dig Chart
-            _create_mini_dig_chart(player_df, player_name)
-        
-        # Additional metrics row for serve in-rate
-        col_serve = st.columns(1)[0]
-        with col_serve:
-            serve_in_rate = metrics.get('serve_in_rate', 0.0)
-            service_aces_count = player_data.get('service_aces', 0)
-            service_good_count = len(player_df[(player_df['action'] == 'serve') & (player_df['outcome'] == 'good')])
-            service_attempts_count = player_data.get('service_attempts', 0)
-            _display_player_metric_card(
-                "Serve In-Rate",
-                serve_in_rate,
-                KPI_TARGETS['serve_in_rate'],
-                "(Aces + Good Serves) / Total Serve Attempts",
-                f"{service_aces_count + service_good_count}/{service_attempts_count}"
-            )
-    
-    elif position == 'L':
-        # Libero: Reception Chart, Dig Chart, Serve In-Rate - all as donut charts in one row
-        st.markdown("##### Performance Metrics")
-        
-        # Single row with 3 donut charts
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            # Reception Chart
-            _create_mini_reception_chart(player_df, player_name)
-        
-        with col2:
-            # Dig Chart
-            _create_mini_dig_chart(player_df, player_name)
-        
-        with col3:
-            # Serve In-Rate
-            _create_mini_serve_rate_chart(player_df, player_data, player_name)
-    
-    else:
-        # Unknown/Other position: Show general metrics with charts
-        st.markdown("##### Performance Metrics")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
+            # Attack Kill %
             attack_kill_pct = metrics.get('attack_kill_pct', 0.0)
-            if attack_kill_pct > 0:
+            attack_kills = player_data.get('attack_kills', 0)
+            attack_attempts = player_data.get('attack_attempts', 0)
+            if attack_attempts > 0:
                 _display_player_metric_card(
                     "Attack Kill %",
                     attack_kill_pct,
                     KPI_TARGETS['kill_percentage'],
                     "Attack Kills / Total Attack Attempts",
-                    f"{player_data['attack_kills']}/{player_data.get('attack_attempts', 0)}"
+                    f"{attack_kills}/{attack_attempts}"
                 )
             else:
                 st.info("No attack data")
         
         with col2:
-            # Reception Chart
-            _create_mini_reception_chart(player_df, player_name)
+            # Reception Quality
+            reception_quality = metrics.get('reception_quality', 0.0)
+            receives = player_df[player_df['action'] == 'receive']
+            reception_good = len(filter_good_receptions(receives))
+            reception_total = len(receives)
+            if reception_total > 0:
+                _display_player_metric_card(
+                    "Reception Quality",
+                    reception_quality,
+                    KPI_TARGETS['reception_quality'],
+                    "Good Receptions / Total Receptions",
+                    f"{reception_good}/{reception_total}"
+                )
+            else:
+                st.info("No reception data")
         
         with col3:
-            # Block Chart
-            _create_mini_block_chart(player_df, player_name)
+            # Block Kill %
+            block_kill_pct = metrics.get('block_kill_pct', 0.0)
+            block_kills = player_data.get('block_kills', 0)
+            block_attempts = player_data.get('block_attempts', 0)
+            if block_attempts > 0:
+                _display_player_metric_card(
+                    "Block Kill %",
+                    block_kill_pct,
+                    KPI_TARGETS['block_kill_percentage'],
+                    "Block Kills / Total Block Attempts",
+                    f"{block_kills}/{block_attempts}"
+                )
+            else:
+                st.info("No block data")
+    
+    elif position and position.startswith('MB'):
+        # Middle Blocker: Premium metric cards matching setter quality
+        st.markdown("##### Performance Metrics")
+        col1, col2, col3 = st.columns(3)
         
-        with col4:
-            # Dig Chart
-            _create_mini_dig_chart(player_df, player_name)
+        with col1:
+            # Attack Kill %
+            attack_kill_pct = metrics.get('attack_kill_pct', 0.0)
+            attack_kills = player_data.get('attack_kills', 0)
+            attack_attempts = player_data.get('attack_attempts', 0)
+            if attack_attempts > 0:
+                _display_player_metric_card(
+                    "Attack Kill %",
+                    attack_kill_pct,
+                    KPI_TARGETS['kill_percentage'],
+                    "Attack Kills / Total Attack Attempts",
+                    f"{attack_kills}/{attack_attempts}"
+                )
+            else:
+                st.info("No attack data")
+        
+        with col2:
+            # Block Kill %
+            block_kill_pct = metrics.get('block_kill_pct', 0.0)
+            block_kills = player_data.get('block_kills', 0)
+            block_attempts = player_data.get('block_attempts', 0)
+            if block_attempts > 0:
+                _display_player_metric_card(
+                    "Block Kill %",
+                    block_kill_pct,
+                    KPI_TARGETS['block_kill_percentage'],
+                    "Block Kills / Total Block Attempts",
+                    f"{block_kills}/{block_attempts}"
+                )
+            else:
+                st.info("No block data")
+        
+        with col3:
+            # Serve In-Rate
+            serve_in_rate = metrics.get('serve_in_rate', 0.0)
+            service_aces_count = player_data.get('service_aces', 0)
+            service_good_count = len(player_df[(player_df['action'] == 'serve') & (player_df['outcome'] == 'good')])
+            service_attempts_count = player_data.get('service_attempts', 0)
+            if service_attempts_count > 0:
+                _display_player_metric_card(
+                    "Serve In-Rate",
+                    serve_in_rate,
+                    KPI_TARGETS['serve_in_rate'],
+                    "(Aces + Good Serves) / Total Serve Attempts",
+                    f"{service_aces_count + service_good_count}/{service_attempts_count}"
+                )
+            else:
+                st.info("No serve data")
+    
+    elif position == 'OPP':
+        # Opposite: Premium metric cards matching setter quality
+        st.markdown("##### Performance Metrics")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Attack Kill %
+            attack_kill_pct = metrics.get('attack_kill_pct', 0.0)
+            attack_kills = player_data.get('attack_kills', 0)
+            attack_attempts = player_data.get('attack_attempts', 0)
+            if attack_attempts > 0:
+                _display_player_metric_card(
+                    "Attack Kill %",
+                    attack_kill_pct,
+                    KPI_TARGETS['kill_percentage'],
+                    "Attack Kills / Total Attack Attempts",
+                    f"{attack_kills}/{attack_attempts}"
+                )
+            else:
+                st.info("No attack data")
+        
+        with col2:
+            # Block Kill %
+            block_kill_pct = metrics.get('block_kill_pct', 0.0)
+            block_kills = player_data.get('block_kills', 0)
+            block_attempts = player_data.get('block_attempts', 0)
+            if block_attempts > 0:
+                _display_player_metric_card(
+                    "Block Kill %",
+                    block_kill_pct,
+                    KPI_TARGETS['block_kill_percentage'],
+                    "Block Kills / Total Block Attempts",
+                    f"{block_kills}/{block_attempts}"
+                )
+            else:
+                st.info("No block data")
+        
+        with col3:
+            # Reception Quality
+            reception_quality = metrics.get('reception_quality', 0.0)
+            receives = player_df[player_df['action'] == 'receive']
+            reception_good = len(filter_good_receptions(receives))
+            reception_total = len(receives)
+            if reception_total > 0:
+                _display_player_metric_card(
+                    "Reception Quality",
+                    reception_quality,
+                    KPI_TARGETS['reception_quality'],
+                    "Good Receptions / Total Receptions",
+                    f"{reception_good}/{reception_total}"
+                )
+            else:
+                st.info("No reception data")
+    
+    elif position == 'L':
+        # Libero: Premium metric cards matching setter quality
+        st.markdown("##### Performance Metrics")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Reception Quality
+            reception_quality = metrics.get('reception_quality', 0.0)
+            receives = player_df[player_df['action'] == 'receive']
+            reception_good = len(filter_good_receptions(receives))
+            reception_total = len(receives)
+            if reception_total > 0:
+                _display_player_metric_card(
+                    "Reception Quality",
+                    reception_quality,
+                    KPI_TARGETS['reception_quality'],
+                    "Good Receptions / Total Receptions",
+                    f"{reception_good}/{reception_total}"
+                )
+            else:
+                st.info("No reception data")
+        
+        with col2:
+            # Dig Rate
+            dig_rate = metrics.get('dig_rate', 0.0)
+            dig_total = player_data.get('dig_total', 0)
+            dig_good = player_data.get('dig_good', 0)
+            if dig_total > 0:
+                _display_player_metric_card(
+                    "Dig Rate",
+                    dig_rate,
+                    KPI_TARGETS['dig_rate'],
+                    "Good Digs / Total Digs",
+                    f"{dig_good}/{dig_total}"
+                )
+            else:
+                st.info("No dig data")
+        
+        with col3:
+            # Serve In-Rate
+            serve_in_rate = metrics.get('serve_in_rate', 0.0)
+            service_aces_count = player_data.get('service_aces', 0)
+            service_good_count = len(player_df[(player_df['action'] == 'serve') & (player_df['outcome'] == 'good')])
+            service_attempts_count = player_data.get('service_attempts', 0)
+            if service_attempts_count > 0:
+                _display_player_metric_card(
+                    "Serve In-Rate",
+                    serve_in_rate,
+                    KPI_TARGETS['serve_in_rate'],
+                    "(Aces + Good Serves) / Total Serve Attempts",
+                    f"{service_aces_count + service_good_count}/{service_attempts_count}"
+                )
+            else:
+                st.info("No serve data")
+    
+    else:
+        # Unknown/Other position: Premium metric cards matching setter quality
+        st.markdown("##### Performance Metrics")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            attack_kill_pct = metrics.get('attack_kill_pct', 0.0)
+            attack_kills = player_data.get('attack_kills', 0)
+            attack_attempts = player_data.get('attack_attempts', 0)
+            if attack_attempts > 0:
+                _display_player_metric_card(
+                    "Attack Kill %",
+                    attack_kill_pct,
+                    KPI_TARGETS['kill_percentage'],
+                    "Attack Kills / Total Attack Attempts",
+                    f"{attack_kills}/{attack_attempts}"
+                )
+            else:
+                st.info("No attack data")
+        
+        with col2:
+            # Reception Quality
+            reception_quality = metrics.get('reception_quality', 0.0)
+            receives = player_df[player_df['action'] == 'receive']
+            reception_good = len(filter_good_receptions(receives))
+            reception_total = len(receives)
+            if reception_total > 0:
+                _display_player_metric_card(
+                    "Reception Quality",
+                    reception_quality,
+                    KPI_TARGETS['reception_quality'],
+                    "Good Receptions / Total Receptions",
+                    f"{reception_good}/{reception_total}"
+                )
+            else:
+                st.info("No reception data")
+        
+        with col3:
+            # Block Kill %
+            block_kill_pct = metrics.get('block_kill_pct', 0.0)
+            block_kills = player_data.get('block_kills', 0)
+            block_attempts = player_data.get('block_attempts', 0)
+            if block_attempts > 0:
+                _display_player_metric_card(
+                    "Block Kill %",
+                    block_kill_pct,
+                    KPI_TARGETS['block_kill_percentage'],
+                    "Block Kills / Total Block Attempts",
+                    f"{block_kills}/{block_attempts}"
+                )
+            else:
+                st.info("No block data")
 
 
 def _display_player_metric_card(label: str, value: float, targets: Dict[str, float],
@@ -1088,13 +1274,23 @@ def _display_detailed_stats(player_name: str, player_data: Dict[str, Any], is_se
         
         with col1:
             st.markdown("#### 🎯 Setting Statistics")
+            # Calculate setting stats from dataframe for accuracy (matches libero approach)
+            sets = player_df[player_df['action'] == 'set'] if not player_df.empty else pd.DataFrame()
+            total_sets_count = len(sets)
+            exceptional_sets = len(sets[sets['outcome'] == 'exceptional']) if len(sets) > 0 else 0
+            good_sets_count = len(sets[sets['outcome'] == 'good']) if len(sets) > 0 else 0
+            poor_sets = len(sets[sets['outcome'] == 'poor']) if len(sets) > 0 else 0
+            error_sets = len(sets[sets['outcome'] == 'error']) if len(sets) > 0 else 0
+            good_total = exceptional_sets + good_sets_count
+            setting_percentage = (good_total / total_sets_count) if total_sets_count > 0 else player_data.get('setting_percentage', 0)
+            
             setting_data = {
                 'Metric': ['Total Sets', 'Good Sets', 'Error Sets', 'Setting %'],
                 'Value': [
-                    int(player_data.get('total_sets', 0)),
-                    int(player_data.get('good_sets', 0)),
-                    int(player_data.get('total_sets', 0) - player_data.get('good_sets', 0)),
-                    f"{player_data.get('setting_percentage', 0):.1%}"
+                    int(total_sets_count if total_sets_count > 0 else player_data.get('total_sets', 0)),
+                    int(good_total if total_sets_count > 0 else player_data.get('good_sets', 0)),
+                    int(error_sets),
+                    f"{setting_percentage:.1%}"
                 ]
             }
             setting_df = pd.DataFrame(setting_data)
@@ -1106,9 +1302,9 @@ def _display_detailed_stats(player_name: str, player_data: Dict[str, Any], is_se
                 'Metric': ['Attempts', 'Kills', 'Errors', 'Efficiency'],
                 'Value': [
                     int(player_data.get('attack_attempts', 0)),
-                    int(player_data['attack_kills']),
-                    int(player_data['attack_errors']),
-                    f"{player_data['attack_efficiency']:.1%}"
+                    int(player_data.get('attack_kills', 0)),
+                    int(player_data.get('attack_errors', 0)),
+                    f"{player_data.get('attack_efficiency', 0):.1%}"
                 ]
             }
             attack_df = pd.DataFrame(attack_data)
@@ -1120,9 +1316,9 @@ def _display_detailed_stats(player_name: str, player_data: Dict[str, Any], is_se
                 'Metric': ['Attempts', 'Aces', 'Errors', 'Efficiency'],
                 'Value': [
                     int(player_data.get('service_attempts', 0)),
-                    int(player_data['service_aces']),
-                    int(player_data['service_errors']),
-                    f"{player_data['service_efficiency']:.1%}"
+                    int(player_data.get('service_aces', 0)),
+                    int(player_data.get('service_errors', 0)),
+                    f"{player_data.get('service_efficiency', 0):.1%}"
                 ]
             }
             service_df = pd.DataFrame(service_data)
@@ -1134,9 +1330,9 @@ def _display_detailed_stats(player_name: str, player_data: Dict[str, Any], is_se
                 'Metric': ['Attempts', 'Kills', 'Errors', 'Efficiency'],
                 'Value': [
                     int(player_data.get('block_attempts', 0)),
-                    int(player_data['block_kills']),
-                    int(player_data['block_errors']),
-                    f"{player_data['block_efficiency']:.1%}"
+                    int(player_data.get('block_kills', 0)),
+                    int(player_data.get('block_errors', 0)),
+                    f"{player_data.get('block_efficiency', 0):.1%}"
                 ]
             }
             block_df = pd.DataFrame(block_data)
@@ -1150,9 +1346,9 @@ def _display_detailed_stats(player_name: str, player_data: Dict[str, Any], is_se
                 'Metric': ['Attempts', 'Kills', 'Errors', 'Efficiency'],
                 'Value': [
                     int(player_data.get('attack_attempts', 0)),
-                    int(player_data['attack_kills']),
-                    int(player_data['attack_errors']),
-                    f"{player_data['attack_efficiency']:.1%}"
+                    int(player_data.get('attack_kills', 0)),
+                    int(player_data.get('attack_errors', 0)),
+                    f"{player_data.get('attack_efficiency', 0):.1%}"
                 ]
             }
             attack_df = pd.DataFrame(attack_data)
@@ -1164,9 +1360,9 @@ def _display_detailed_stats(player_name: str, player_data: Dict[str, Any], is_se
                 'Metric': ['Attempts', 'Aces', 'Errors', 'Efficiency'],
                 'Value': [
                     int(player_data.get('service_attempts', 0)),
-                    int(player_data['service_aces']),
-                    int(player_data['service_errors']),
-                    f"{player_data['service_efficiency']:.1%}"
+                    int(player_data.get('service_aces', 0)),
+                    int(player_data.get('service_errors', 0)),
+                    f"{player_data.get('service_efficiency', 0):.1%}"
                 ]
             }
             service_df = pd.DataFrame(service_data)
@@ -1178,9 +1374,9 @@ def _display_detailed_stats(player_name: str, player_data: Dict[str, Any], is_se
                 'Metric': ['Attempts', 'Kills', 'Errors', 'Efficiency'],
                 'Value': [
                     int(player_data.get('block_attempts', 0)),
-                    int(player_data['block_kills']),
-                    int(player_data['block_errors']),
-                    f"{player_data['block_efficiency']:.1%}"
+                    int(player_data.get('block_kills', 0)),
+                    int(player_data.get('block_errors', 0)),
+                    f"{player_data.get('block_efficiency', 0):.1%}"
                 ]
             }
             block_df = pd.DataFrame(block_data)
@@ -1211,7 +1407,7 @@ def _display_player_insights(analyzer: MatchAnalyzer, player_name: str, player_d
                 'dig_rate': team_kpis.get('dig_rate', 0),
                 'setting_quality': 0.75  # Default target
             }
-        except:
+        except (KeyError, TypeError, ZeroDivisionError):
             pass
     
     # Generate insights

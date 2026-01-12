@@ -1,7 +1,8 @@
 """
 Team Overview UI Module
 
-Displays team performance overview with KPIs, insights, and charts
+Displays team performance overview with KPIs, insights, and charts.
+Features premium visual components for professional sports analytics.
 """
 from typing import Optional, Dict, Any, List
 import streamlit as st
@@ -9,7 +10,14 @@ import pandas as pd
 from match_analyzer import MatchAnalyzer
 import performance_tracker as pt
 from config import KPI_TARGETS
-from ui.components import display_match_banner
+from ui.components import display_match_banner, display_executive_summary
+from ui.premium_components import (
+    display_performance_scorecard,
+    display_match_result_premium,
+    display_premium_metric_card,
+    create_gauge_chart,
+    display_premium_section_header
+)
 from utils.formatters import format_percentage, get_performance_delta_color, get_performance_color
 from utils.helpers import filter_good_receptions, filter_good_digs, filter_block_touches
 from ui.team_overview_helpers import _display_metric_styling
@@ -18,14 +26,12 @@ from ui.team_overview_helpers import _display_metric_styling
 def display_team_overview(analyzer: MatchAnalyzer, loader=None) -> None:
     """Display team performance overview with KPIs and insights.
     
-    Restructured into 7 logical sections:
+    Restructured into 5 logical sections:
     1. Match Context & Quick Summary
     2. Core Performance Metrics
     3. Match Flow & Momentum
     4. Skill Performance Analysis
     5. Performance Trends & Consistency
-    6. Rotation Analysis
-    7. Insights & Recommendations
     
     Args:
         analyzer: MatchAnalyzer instance with loaded match data
@@ -50,47 +56,36 @@ def display_team_overview(analyzer: MatchAnalyzer, loader=None) -> None:
     _display_metric_styling()
     
     # ============================================================
-    # SECTION 1: Match Context & Quick Summary
+    # SECTION 1: Match Result & Executive Summary
     # ============================================================
-    display_match_banner(loader)
-    st.markdown("---")
+    _display_premium_match_header(loader, kpis, targets)
     
     # ============================================================
     # SECTION 2: Core Performance Metrics
     # ============================================================
-    st.markdown('<h2 class="main-header">📊 Core Performance Metrics</h2>', unsafe_allow_html=True)
+    display_premium_section_header("Core Performance Metrics", "📊", "Detailed metrics by skill area")
     _display_kpi_metrics(analyzer, team_stats, kpis, targets, loader)
-    st.markdown("---")
     
     # ============================================================
     # SECTION 3: Match Flow & Momentum
     # ============================================================
-    st.markdown('<h2 class="main-header">📈 Match Flow & Momentum</h2>', unsafe_allow_html=True)
+    display_premium_section_header("Match Flow & Momentum", "📈", "Score progression and rotation performance")
     from charts.team_charts import create_match_flow_charts
     create_match_flow_charts(analyzer, loader)
-    st.markdown("---")
     
     # ============================================================
     # SECTION 4: Skill Performance Analysis
     # ============================================================
-    st.markdown('<h2 class="main-header">🎯 Skill Performance Analysis</h2>', unsafe_allow_html=True)
+    display_premium_section_header("Skill Performance Analysis", "🎯", "Detailed breakdown by skill area")
     from charts.team_charts import create_skill_performance_charts
     create_skill_performance_charts(analyzer, loader)
-    st.markdown("---")
     
     # ============================================================
     # SECTION 5: Performance Trends & Consistency
     # ============================================================
-    st.markdown('<h2 class="main-header">📉 Performance Trends & Consistency</h2>', unsafe_allow_html=True)
+    display_premium_section_header("Performance Trends & Consistency", "📉", "Set-by-set breakdowns")
     _display_set_by_set_breakdowns(analyzer, kpis, loader)
-    _display_position_breakdowns(analyzer, kpis, loader)
-    st.markdown("---")
     
-    # ============================================================
-    # SECTION 6: Insights & Recommendations
-    # ============================================================
-    st.markdown('<h2 class="main-header">💡 Insights & Recommendations</h2>', unsafe_allow_html=True)
-    _display_insights_section(analyzer, team_stats, targets, loader)
 
 
 def _get_kpis(loader, analyzer: MatchAnalyzer, team_stats: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -109,11 +104,95 @@ def _get_kpis(loader, analyzer: MatchAnalyzer, team_stats: Dict[str, Any]) -> Op
     return None
 
 
+def _display_premium_match_header(loader, kpis: Optional[Dict[str, Any]], targets: Dict[str, Any]) -> None:
+    """Display premium match header with result banner, scorecard, and executive summary.
+    
+    Args:
+        loader: ExcelMatchLoader instance
+        kpis: Computed KPIs dictionary
+        targets: KPI targets dictionary
+    """
+    import performance_tracker as pt
+    from ui.components import _get_match_result_summary
+    
+    try:
+        # Get match result data using existing helpers
+        summary = _get_match_result_summary(loader) if loader else None
+        
+        if summary:
+            # Get set results using existing function
+            set_results = []
+            if loader and hasattr(loader, 'team_data'):
+                try:
+                    set_results = pt.compute_set_results_from_loader(loader) if hasattr(pt, 'compute_set_results_from_loader') else []
+                except Exception:
+                    pass
+            
+            # Extract set scores from set_results
+            set_scores = []
+            if set_results:
+                for result in sorted(set_results, key=lambda x: x.get('set_number', 0)):
+                    our_points = result.get('our_points', 0)
+                    opp_points = result.get('opp_points', 0)
+                    if our_points > 0 or opp_points > 0:
+                        set_scores.append((our_points, opp_points))
+            
+            # Get opponent name
+            opponent = ""
+            if loader and hasattr(loader, 'match_info') and loader.match_info:
+                opponent = loader.match_info.get('opponent', '')
+            
+            # Display premium match result
+            # Use set_scores if available, otherwise use default placeholders
+            if not set_scores:
+                # Create default scores based on sets_won/sets_lost
+                sets_won = summary.get('sets_won', 0)
+                sets_lost = summary.get('sets_lost', 0)
+                set_scores = [(25, 20)] * sets_won + [(20, 25)] * sets_lost
+            
+            display_match_result_premium(
+                outcome=summary['outcome'],
+                sets_won=summary.get('sets_won', 0),
+                sets_lost=summary.get('sets_lost', 0),
+                set_scores=set_scores,
+                opponent=opponent
+            )
+        else:
+            # Fallback to standard banner
+            display_match_banner(loader)
+    except Exception as e:
+        import logging
+        logging.error(f"Error displaying premium match header: {e}", exc_info=True)
+        # Fallback to standard banner
+        display_match_banner(loader)
+    
+    # Display executive summary
+    try:
+        display_executive_summary(loader, kpis)
+    except Exception as e:
+        import logging
+        logging.error(f"Error displaying executive summary: {e}", exc_info=True)
+    
+    # Display performance scorecard if KPIs available
+    try:
+        if kpis:
+            # Pass the full targets dict - scorecard function handles the mapping
+            display_performance_scorecard(kpis, targets)
+    except Exception as e:
+        import logging
+        logging.error(f"Error displaying performance scorecard: {e}", exc_info=True)
+
+
 def _display_kpi_metrics(analyzer: MatchAnalyzer, team_stats: Dict[str, Any], 
                         kpis: Optional[Dict[str, Any]], targets: Dict[str, Any], loader=None) -> None:
-    """Display KPI metrics in grid layout."""
-    # Row 1: 4 metrics
-    col1, col2, col3, col4 = st.columns(4)
+    """Display KPI metrics in organized groups: Scoring and Defense."""
+    
+    # ==========================================
+    # SCORING METRICS (Point Production)
+    # ==========================================
+    st.markdown('<div style="display: flex; align-items: center; margin-top: 8px; margin-bottom: 16px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">⚡ Scoring</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Point production efficiency</span></div>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         serving_rate = kpis['break_point_rate'] if kpis else team_stats.get('serve_point_percentage', 0.0)
@@ -123,26 +202,24 @@ def _display_kpi_metrics(analyzer: MatchAnalyzer, team_stats: Dict[str, Any],
             "Serving Point Rate",
             serving_rate,
             targets['break_point_rate'],
-            "Points Won When Serving / Total Serving Rallies",
+            "Points won when serving",
             "info_serving_point",
             numerator=serving_points_won,
             denominator=serving_rallies
         )
     
     with col2:
-        service_value = _calculate_serve_in_rate(analyzer, kpis)
-        service_aces = kpis['totals']['service_aces'] if kpis and 'totals' in kpis else 0
-        service_good = kpis['totals']['service_good'] if kpis and 'totals' in kpis else 0
-        serve_attempts = kpis['totals']['serve_attempts'] if kpis and 'totals' in kpis else 0
-        service_in = service_aces + service_good
+        receiving_rate = kpis['side_out_efficiency'] if kpis else team_stats['side_out_percentage']
+        receiving_points_won = kpis['totals']['receiving_points_won'] if kpis and 'totals' in kpis else 0
+        receiving_rallies = kpis['totals']['receiving_rallies'] if kpis and 'totals' in kpis else 0
         _display_metric_card(
-            "Serve In-Rate",
-            service_value,
-            targets['serve_in_rate'],
-            "(Aces + Good Serves) / Total Serve Attempts",
-            "info_service",
-            numerator=service_in,
-            denominator=serve_attempts
+            "Receiving Point Rate",
+            receiving_rate,
+            targets['side_out_percentage'],
+            "Points won when receiving",
+            "info_receiving_point",
+            numerator=receiving_points_won,
+            denominator=receiving_rallies
         )
     
     with col3:
@@ -155,45 +232,20 @@ def _display_kpi_metrics(analyzer: MatchAnalyzer, team_stats: Dict[str, Any],
             "Attack Kill %",
             attack_value,
             targets['kill_percentage'],
-            "Attack Kills / Total Attack Attempts",
+            "Attack kills / attempts",
             "info_attack",
             numerator=attack_kills,
             denominator=attack_attempts
         )
     
+    # ==========================================
+    # DEFENSE & TRANSITION METRICS
+    # ==========================================
+    st.markdown('<div style="display: flex; align-items: center; margin-top: 24px; margin-bottom: 16px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">🛡️ Defense & Transition</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Quality of defensive contacts</span></div>', unsafe_allow_html=True)
+    
+    col4, col5, col6 = st.columns(3)
+    
     with col4:
-        dig_rate = kpis['dig_rate'] if kpis else _calculate_dig_rate(analyzer, loader)
-        dig_good = kpis['totals']['dig_good'] if kpis and 'totals' in kpis else 0
-        dig_total = kpis['totals']['dig_total'] if kpis and 'totals' in kpis else 0
-        _display_metric_card(
-            "Dig Rate",
-            dig_rate,
-            targets['dig_rate'],
-            "Good Digs / Total Dig Attempts",
-            "info_dig",
-            numerator=dig_good,
-            denominator=dig_total
-        )
-    
-    # Row 2: 4 metrics
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-    col5, col6, col7, col8 = st.columns(4)
-    
-    with col5:
-        receiving_rate = kpis['side_out_efficiency'] if kpis else team_stats['side_out_percentage']
-        receiving_points_won = kpis['totals']['receiving_points_won'] if kpis and 'totals' in kpis else 0
-        receiving_rallies = kpis['totals']['receiving_rallies'] if kpis and 'totals' in kpis else 0
-        _display_metric_card(
-            "Receiving Point Rate",
-            receiving_rate,
-            targets['side_out_percentage'],
-            "Points Won When Receiving / Total Receiving Rallies",
-            "info_receiving_point",
-            numerator=receiving_points_won,
-            denominator=receiving_rallies
-        )
-    
-    with col6:
         reception_quality = kpis['reception_quality'] if kpis else _calculate_reception_quality(analyzer, loader)
         rec_good = kpis['totals']['reception_good'] if kpis and 'totals' in kpis else 0
         rec_total = kpis['totals']['reception_total'] if kpis and 'totals' in kpis else 0
@@ -201,13 +253,27 @@ def _display_kpi_metrics(analyzer: MatchAnalyzer, team_stats: Dict[str, Any],
             "Reception Quality",
             reception_quality,
             targets['reception_quality'],
-            "Good Receptions / Total Reception Attempts",
+            "Good receptions / total",
             "info_reception",
             numerator=rec_good,
             denominator=rec_total
         )
     
-    with col7:
+    with col5:
+        dig_rate = kpis['dig_rate'] if kpis else _calculate_dig_rate(analyzer, loader)
+        dig_good = kpis['totals']['dig_good'] if kpis and 'totals' in kpis else 0
+        dig_total = kpis['totals']['dig_total'] if kpis and 'totals' in kpis else 0
+        _display_metric_card(
+            "Dig Rate",
+            dig_rate,
+            targets['dig_rate'],
+            "Good digs / total",
+            "info_dig",
+            numerator=dig_good,
+            denominator=dig_total
+        )
+    
+    with col6:
         block_kill_pct = kpis['block_kill_pct'] if kpis else _calculate_block_kill_pct(analyzer)
         block_kills = kpis['totals']['block_kills'] if kpis and 'totals' in kpis else 0
         block_attempts = kpis['totals']['block_attempts'] if kpis and 'totals' in kpis else 0
@@ -215,27 +281,62 @@ def _display_kpi_metrics(analyzer: MatchAnalyzer, team_stats: Dict[str, Any],
             "Block Kill %",
             block_kill_pct,
             targets['block_kill_percentage'],
-            "Block Kills / Total Block Attempts",
+            "Block kills / attempts",
             "info_block_kill",
             numerator=block_kills,
             denominator=block_attempts
         )
     
-    with col8:
-        avg_actions = kpis.get('avg_actions_per_point', 0.0) if kpis else _calculate_avg_actions(analyzer, loader)
-        total_points = (kpis['totals']['serving_rallies'] + kpis['totals']['receiving_rallies']) if kpis and 'totals' in kpis else 0
+    # ==========================================
+    # SERVICE METRICS
+    # ==========================================
+    st.markdown('<div style="display: flex; align-items: center; margin-top: 24px; margin-bottom: 16px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">🎾 Service</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Serve quality and consistency</span></div>', unsafe_allow_html=True)
+    
+    col7, col8, col9 = st.columns(3)
+    
+    with col7:
+        service_value = _calculate_serve_in_rate(analyzer, kpis)
+        service_aces = kpis['totals']['service_aces'] if kpis and 'totals' in kpis else 0
+        service_good = kpis['totals']['service_good'] if kpis and 'totals' in kpis else 0
+        serve_attempts = kpis['totals']['serve_attempts'] if kpis and 'totals' in kpis else 0
+        service_in = service_aces + service_good
         _display_metric_card(
-            "Avg Actions/Point",
-            avg_actions,
-            KPI_TARGETS.get('avg_actions_per_point', {'min': 0.0, 'max': 0.0, 'optimal': 0.0}),
-            "Total Actions / Total Points",
-            "info_avg_actions",
-            is_percentage=False,
-            denominator=total_points,
-            lower_is_better=True  # Lower is better (more efficient)
+            "Serve In-Rate",
+            service_value,
+            targets['serve_in_rate'],
+            "(Aces + Good) / total",
+            "info_service",
+            numerator=service_in,
+            denominator=serve_attempts
         )
     
-    # Row 3 removed per user request (Attack Efficiency, Ace Rate, Block Touch Rate, Ace-to-Error Ratio)
+    with col8:
+        # Ace Rate
+        ace_rate = (service_aces / serve_attempts) if serve_attempts > 0 else 0.0
+        _display_metric_card(
+            "Ace Rate",
+            ace_rate,
+            {'min': 0.05, 'max': 0.15, 'optimal': 0.08},
+            "Aces / total serves",
+            "info_ace_rate",
+            numerator=service_aces,
+            denominator=serve_attempts
+        )
+    
+    with col9:
+        # Error Rate (lower is better)
+        service_errors = kpis['totals'].get('service_errors', 0) if kpis and 'totals' in kpis else 0
+        error_rate = (service_errors / serve_attempts) if serve_attempts > 0 else 0.0
+        _display_metric_card(
+            "Service Error Rate",
+            error_rate,
+            {'min': 0.05, 'max': 0.15, 'optimal': 0.10},
+            "Errors / total serves",
+            "info_serve_error",
+            numerator=service_errors,
+            denominator=serve_attempts,
+            lower_is_better=True
+        )
 
 
 def _display_metric_card(label: str, value: float, targets: Dict[str, float],
@@ -1087,7 +1188,7 @@ def _display_advanced_analytics(analyzer: MatchAnalyzer, kpis: Optional[Dict[str
                     current_set = int(latest_event.get('Set', 1))
                     our_score = int(latest_event.get('Our_Score', 0))
                     their_score = int(latest_event.get('Opponent_Score', 0))
-            except:
+            except (ValueError, TypeError, KeyError):
                 pass
             
             serving_rate = kpis.get('break_point_rate', 0.5)

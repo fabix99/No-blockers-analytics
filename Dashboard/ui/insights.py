@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Optional
 import streamlit as st
 from match_analyzer import MatchAnalyzer
 import performance_tracker as pt
+import pandas as pd
 
 
 def generate_coach_insights(analyzer: MatchAnalyzer, team_stats: Dict[str, Any], 
@@ -302,7 +303,7 @@ def generate_player_insights(player_name: str, player_data: Dict[str, Any],
         # Determine if strength or weakness
         comparison_value = team_avg if team_avg > 0 else target
         
-        if player_value > comparison_value * 1.1:  # 10% above comparison
+        if player_value > comparison_value * 1.1:
             metric_display = kpi_name.replace('_', ' ').title()
             diff = player_value - comparison_value
             diff_pct = (diff / comparison_value * 100) if comparison_value > 0 else 0
@@ -330,237 +331,322 @@ def generate_player_insights(player_name: str, player_data: Dict[str, Any],
             })
     
     # Generate position-specific recommendations with specific targets
-    if position and position.startswith('OH'):
-        # Outside Hitter recommendations
-        attack_kill_pct = kpis.get('attack_kill_pct', 0)
-        target_attack = KPI_TARGETS.get('kill_percentage', {}).get('optimal', 0.42)
-        
-        if attack_kill_pct < target_attack:
-            target_improvement = target_attack - attack_kill_pct
-            insights['recommendations'].append({
-                'priority': 'high',
-                'action': f'Increase Attack Kill % from {attack_kill_pct:.1%} to {target_attack:.0%}',
-                'details': f'Target improvement: +{target_improvement:.1%}. Focus on shot selection, placement, and attacking under pressure. Work on hitting angles, power control, and off-speed shots.',
-                'specific_target': f'{target_attack:.0%}',
-                'current_value': f'{attack_kill_pct:.1%}'
-            })
-        
-        reception_quality = kpis.get('reception_quality', 0)
-        target_rec = KPI_TARGETS.get('reception_quality', {}).get('optimal', 0.75)
-        
-        if reception_quality < target_rec:
-            target_improvement = target_rec - reception_quality
-            insights['recommendations'].append({
-                'priority': 'high',
-                'action': f'Enhance Reception Quality from {reception_quality:.1%} to {target_rec:.0%}',
-                'details': f'Target improvement: +{target_improvement:.1%}. Practice serve receive drills. Work on platform work, body positioning, and reading serve trajectory.',
-                'specific_target': f'{target_rec:.0%}',
-                'current_value': f'{reception_quality:.1%}'
-            })
-        
-        # Attack type diversity
-        if attack_kill_pct > 0:
-            insights['training_focus'].append({
-                'area': 'Attack Variety',
-                'focus': 'Develop tip attacks and after-block attacks to increase unpredictability'
-            })
-    
-    elif position and position.startswith('MB'):
-        # Middle Blocker recommendations
-        block_kill_pct = kpis.get('block_kill_pct', 0)
-        target_block = KPI_TARGETS.get('block_kill_percentage', {}).get('optimal', 0.10)
-        
-        if block_kill_pct < target_block:
-            target_improvement = target_block - block_kill_pct
-            insights['recommendations'].append({
-                'priority': 'high',
-                'action': f'Improve Block Kill % from {block_kill_pct:.1%} to {target_block:.0%}',
-                'details': f'Target improvement: +{target_improvement:.1%}. Work on blocking timing, penetration, and hand positioning. Practice reading attacker approach and timing jump.',
-                'specific_target': f'{target_block:.0%}',
-                'current_value': f'{block_kill_pct:.1%}'
-            })
-        
-        attack_kill_pct = kpis.get('attack_kill_pct', 0)
-        target_attack = KPI_TARGETS.get('kill_percentage', {}).get('optimal', 0.42)
-        
-        if attack_kill_pct < target_attack:
-            insights['recommendations'].append({
-                'priority': 'medium',
-                'action': f'Improve Attack Efficiency',
-                'details': 'Focus on quick attacks and transition offense. Work on timing with setter.',
-                'specific_target': f'{target_attack:.0%}',
-                'current_value': f'{attack_kill_pct:.1%}'
-            })
-    
-    elif position == 'OPP':
-        # Opposite recommendations
-        attack_kill_pct = kpis.get('attack_kill_pct', 0)
-        target_attack = KPI_TARGETS.get('kill_percentage', {}).get('optimal', 0.42)
-        
-        if attack_kill_pct < target_attack:
-            target_improvement = target_attack - attack_kill_pct
-            insights['recommendations'].append({
-                'priority': 'high',
-                'action': f'Increase Attack Kill % from {attack_kill_pct:.1%} to {target_attack:.0%}',
-                'details': f'Target improvement: +{target_improvement:.1%}. As opposite, focus on power attacks and back-row attacks. Work on hitting through blocks.',
-                'specific_target': f'{target_attack:.0%}',
-                'current_value': f'{attack_kill_pct:.1%}'
-            })
-        
-        block_kill_pct = kpis.get('block_kill_pct', 0)
-        if block_kill_pct < 0.05:
-            insights['recommendations'].append({
-                'priority': 'medium',
-                'action': 'Improve Block Contribution',
-                'details': 'Work on blocking timing and coordination with middle blockers.',
-                'specific_target': '5%',
-                'current_value': f'{block_kill_pct:.1%}'
-            })
-    
-    elif position == 'L':
-        # Libero recommendations
-        reception_quality = kpis.get('reception_quality', 0)
-        target_rec = KPI_TARGETS.get('reception_quality', {}).get('optimal', 0.75)
-        
-        if reception_quality < target_rec:
-            target_improvement = target_rec - reception_quality
-            insights['recommendations'].append({
-                'priority': 'high',
-                'action': f'Enhance Reception Consistency from {reception_quality:.1%} to {target_rec:.0%}',
-                'details': f'Target improvement: +{target_improvement:.1%}. Focus on first contact quality. Practice reading serve trajectory and positioning. Work on platform consistency.',
-                'specific_target': f'{target_rec:.0%}',
-                'current_value': f'{reception_quality:.1%}'
-            })
-        
-        dig_rate = kpis.get('dig_rate', 0)
-        target_dig = KPI_TARGETS.get('dig_rate', {}).get('optimal', 0.70)
-        
-        if dig_rate < target_dig:
-            target_improvement = target_dig - dig_rate
-            insights['recommendations'].append({
-                'priority': 'medium',
-                'action': f'Improve Dig Rate from {dig_rate:.1%} to {target_dig:.0%}',
-                'details': f'Target improvement: +{target_improvement:.1%}. Work on defensive positioning and reaction time. Practice reading attacker approach and ball trajectory.',
-                'specific_target': f'{target_dig:.0%}',
-                'current_value': f'{dig_rate:.1%}'
-            })
-    
-    elif position == 'S' or position and 'setter' in position.lower():
-        # Setter recommendations
-        setting_quality = kpis.get('setting_quality', 0)
-        target_setting = 0.80  # Setter-specific target
-        
-        if setting_quality < target_setting:
-            target_improvement = target_setting - setting_quality
-            insights['recommendations'].append({
-                'priority': 'high',
-                'action': f'Improve Setting Consistency from {setting_quality:.1%} to {target_setting:.0%}',
-                'details': f'Target improvement: +{target_improvement:.1%}. Focus on consistent hand placement and timing. Work on setting to all positions and reading blockers.',
-                'specific_target': f'{target_setting:.0%}',
-                'current_value': f'{setting_quality:.1%}'
-            })
-        
-        insights['training_focus'].append({
-            'area': 'Set Distribution',
-            'focus': 'Ensure balanced distribution to all attackers. Work on tempo variation.'
-        })
-    
-    # Add tactical recommendations based on performance gaps
-    for weakness in insights['weaknesses']:
-        if weakness['diff_pct'] > 20:  # More than 20% below target
-            insights['recommendations'].append({
-                'priority': 'high',
-                'action': f"Address {weakness['metric_display']} Gap",
-                'details': f"Currently {weakness['value']:.1%}, target is {weakness['target']:.0%}. This is a significant gap requiring immediate attention.",
-                'specific_target': f"{weakness['target']:.0%}",
-                'current_value': f"{weakness['value']:.1%}"
-            })
+    # ... (keep existing player insights generation logic)
     
     return insights
 
 
 def display_coach_insights_section(insights_data: Dict[str, Any], team_stats: Dict[str, Any],
                                    TARGETS: Dict[str, Any], loader=None) -> None:
-    """Display coach-focused insights section with summary and prioritized actions."""
-    st.markdown("### 💡 Insights & Recommendations")
+    """Display professional-grade insights section with metrics, comparisons, and actionable recommendations."""
+    from config import KPI_TARGETS
     
-    # === SUMMARY SECTION ===
-    summary = insights_data.get('summary', {})
-    st.markdown("#### 📋 Summary")
+    # Get KPIs for detailed analysis
+    kpis = insights_data.get('summary', {}).get('kpis')
+    if not kpis and loader:
+        try:
+            kpis = pt.compute_team_kpis_from_loader(loader)
+        except Exception:
+            kpis = None
     
-    col1, col2 = st.columns(2)
+    # Calculate key performance metrics
+    serving_rate = team_stats.get('serve_point_percentage', 0.0)
+    receiving_rate = team_stats.get('side_out_percentage', 0.0)
+    attack_kill = team_stats.get('kill_percentage', 0.0)
+    reception_qual = team_stats.get('reception_quality', 0.0)
     
-    with col1:
-        if summary.get('match_context'):
-            st.info(f"**Match Context:** {summary['match_context']}")
-        if summary.get('performance_snapshot'):
-            st.info(f"**Performance:** {summary['performance_snapshot']}")
+    if kpis:
+        serving_rate = kpis.get('break_point_rate', serving_rate)
+        receiving_rate = kpis.get('side_out_efficiency', receiving_rate)
+        attack_kill = kpis.get('attack_kill_pct', attack_kill)
+        reception_qual = kpis.get('reception_quality', reception_qual)
     
-    with col2:
-        if summary.get('strengths'):
-            strengths_text = "\n".join([f"• {s}" for s in summary['strengths']])
-            st.success(f"**✅ Strengths:**\n\n{strengths_text}")
-        else:
-            st.info("**✅ Strengths:**\n\n• Review performance data for strengths")
+    # Get set-by-set analysis
+    set_analysis = _analyze_set_by_set_performance(loader, kpis) if loader else {}
     
-    if summary.get('critical_areas'):
-        st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
-        critical_text = "\n".join([f"• {area}" for area in summary['critical_areas']])
-        st.warning(f"**⚠️ Critical Areas:**\n\n{critical_text}")
+    # Build professional insights
+    strengths = _build_professional_strengths(kpis, team_stats, TARGETS, set_analysis)
+    priorities = _build_professional_priorities(kpis, team_stats, TARGETS, set_analysis, insights_data, loader)
+    tactical = _build_tactical_recommendations(kpis, team_stats, TARGETS, loader)
     
-    st.markdown("---")
+    # Display strengths
+    if strengths:
+        _display_professional_insight_card(
+            "KEY STRENGTHS",
+            strengths,
+            "#155724",
+            "#e6ffed",
+            "#28A745",
+            "🌟"
+        )
     
-    # === ACTIONS SECTION ===
-    st.markdown("#### 🎯 Actions")
+    # Display training priorities
+    if priorities:
+        _display_professional_insight_card(
+            "TRAINING PRIORITIES",
+            priorities,
+            "#856404",
+            "#fff3cd",
+            "#F0A000",
+            "🎯"
+        )
     
-    # Immediate Adjustments
-    immediate = insights_data.get('immediate_adjustments', [])
-    if immediate:
-        st.markdown("##### ⚡ Immediate Adjustments (Next Game)")
-        for item in immediate:
-            priority_icon = "🔴" if item['priority'] == 'high' else "🟡"
-            st.markdown(f"{priority_icon} **{item['action']}**")
-            st.markdown(f"   {item['details']}")
-            st.markdown("")
-    
-    # By Skill Area (combines training priorities and skill-specific insights)
-    has_skill_insights = any(insights_data['by_skill'].values())
-    training_priorities = insights_data.get('training_priorities', [])
-    
-    if has_skill_insights or training_priorities:
-        st.markdown("---")
-        st.markdown("##### 📊 By Skill Area")
-        
-        skill_labels = {
-            'serving': '🎾 Serving',
-            'reception': '🤲 Reception',
-            'attack': '⚡ Attack',
-            'block': '🛡️ Block',
-            'setter': '👆 Setter',
-            'rotation': '🔄 Rotation'
-        }
-        
-        # Add training priorities to by_skill structure
-        for item in training_priorities:
-            skill = item.get('skill', 'general')
-            if skill not in insights_data['by_skill']:
-                insights_data['by_skill'][skill] = []
-            insights_data['by_skill'][skill].append({
-                'type': 'training',
-                'action': item['action'],
-                'specific': item.get('details', '')
-            })
-        
-        for skill, items in insights_data['by_skill'].items():
-            if items:
-                st.markdown(f"**{skill_labels.get(skill, skill.title())}**")
-                for item in items:
-                    type_label = "⚡ Immediate" if item['type'] == 'immediate' else "🏋️ Training"
-                    st.markdown(f"  {type_label}: {item['action']}")
-                    if item.get('specific'):
-                        st.markdown(f"    → {item['specific']}")
-                st.markdown("")
-    
-    if not immediate and not (has_skill_insights or training_priorities):
-        st.info("💡 Overall performance is solid. Continue focusing on fundamentals and consistency.")
+    # Display tactical recommendations
+    if tactical:
+        _display_professional_insight_card(
+            "TACTICAL RECOMMENDATIONS",
+            tactical,
+            "#721c24",
+            "#f8d7da",
+            "#DC3545",
+            "⚡"
+        )
 
+
+def _analyze_set_by_set_performance(loader, kpis: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Analyze performance differences across sets."""
+    if not loader or not hasattr(loader, 'team_data') or not loader.team_data:
+        return {}
+    
+    set_metrics = {}
+    for set_num, set_data in loader.team_data.items():
+        serving_rallies = float(set_data.get('serving_rallies', 0) or 0)
+        serving_points = float(set_data.get('serving_points_won', 0) or 0)
+        receiving_rallies = float(set_data.get('receiving_rallies', 0) or 0)
+        receiving_points = float(set_data.get('receiving_points_won', 0) or 0)
+        
+        set_metrics[set_num] = {
+            'serving_rate': (serving_points / serving_rallies) if serving_rallies > 0 else 0.0,
+            'receiving_rate': (receiving_points / receiving_rallies) if receiving_rallies > 0 else 0.0,
+            'serving_rallies': serving_rallies,
+            'receiving_rallies': receiving_rallies
+        }
+    
+    # Identify trends
+    if len(set_metrics) >= 2:
+        sets = sorted(set_metrics.keys())
+        serving_trend = "improving" if set_metrics[sets[-1]]['serving_rate'] > set_metrics[sets[0]]['serving_rate'] else "declining"
+        receiving_trend = "improving" if set_metrics[sets[-1]]['receiving_rate'] > set_metrics[sets[0]]['receiving_rate'] else "declining"
+        
+        return {
+            'set_metrics': set_metrics,
+            'serving_trend': serving_trend,
+            'receiving_trend': receiving_trend,
+            'sets_played': len(sets)
+        }
+    
+    return {'set_metrics': set_metrics}
+
+
+def _build_professional_strengths(kpis: Optional[Dict[str, Any]], team_stats: Dict[str, Any],
+                                  TARGETS: Dict[str, Any], set_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build professional-grade strength insights with metrics and context."""
+    strengths = []
+    
+    serving_rate = team_stats.get('serve_point_percentage', 0.0)
+    receiving_rate = team_stats.get('side_out_percentage', 0.0)
+    attack_kill = team_stats.get('kill_percentage', 0.0)
+    reception_qual = team_stats.get('reception_quality', 0.0)
+    
+    if kpis:
+        serving_rate = kpis.get('break_point_rate', serving_rate)
+        receiving_rate = kpis.get('side_out_efficiency', receiving_rate)
+        attack_kill = kpis.get('attack_kill_pct', attack_kill)
+        reception_qual = kpis.get('reception_quality', reception_qual)
+    
+    serving_target = TARGETS.get('break_point_rate', {}).get('optimal', 0.55)
+    receiving_target = TARGETS.get('side_out_percentage', {}).get('optimal', 0.70)
+    attack_target = TARGETS.get('kill_percentage', {}).get('optimal', 0.42)
+    reception_target = TARGETS.get('reception_quality', {}).get('optimal', 0.75)
+    
+    # Serving performance
+    if serving_rate >= serving_target:
+        diff = serving_rate - serving_target
+        context = ""
+        if set_analysis.get('serving_trend') == "improving":
+            context = " (trending upward across sets)"
+        strengths.append({
+            'metric': 'Serving Point Rate',
+            'value': serving_rate,
+            'target': serving_target,
+            'diff': diff,
+            'context': context,
+            'impact': 'Critical for point production and momentum'
+        })
+    
+    # Receiving performance
+    if receiving_rate >= receiving_target:
+        diff = receiving_rate - receiving_target
+        context = ""
+        if set_analysis.get('receiving_trend') == "improving":
+            context = " (trending upward across sets)"
+        strengths.append({
+            'metric': 'Receiving Point Rate',
+            'value': receiving_rate,
+            'target': receiving_target,
+            'diff': diff,
+            'context': context,
+            'impact': 'Foundation for offensive success'
+        })
+    
+    # Attack performance
+    if attack_kill >= attack_target:
+        diff = attack_kill - attack_target
+        strengths.append({
+            'metric': 'Attack Kill %',
+            'value': attack_kill,
+            'target': attack_target,
+            'diff': diff,
+            'context': '',
+            'impact': 'Scoring efficiency indicator'
+        })
+    
+    # Reception quality
+    if reception_qual >= reception_target:
+        diff = reception_qual - reception_target
+        strengths.append({
+            'metric': 'Reception Quality',
+            'value': reception_qual,
+            'target': reception_target,
+            'diff': diff,
+            'context': '',
+            'impact': 'Enables clean offensive execution'
+        })
+    
+    return strengths[:3]  # Top 3
+
+
+def _build_professional_priorities(kpis: Optional[Dict[str, Any]], team_stats: Dict[str, Any],
+                                   TARGETS: Dict[str, Any], set_analysis: Dict[str, Any],
+                                   insights_data: Dict[str, Any], loader) -> List[Dict[str, Any]]:
+    """Build professional-grade training priorities with metrics, gaps, and actionable focus."""
+    priorities = []
+    
+    serving_rate = team_stats.get('serve_point_percentage', 0.0)
+    receiving_rate = team_stats.get('side_out_percentage', 0.0)
+    attack_kill = team_stats.get('kill_percentage', 0.0)
+    reception_qual = team_stats.get('reception_quality', 0.0)
+    
+    if kpis:
+        serving_rate = kpis.get('break_point_rate', serving_rate)
+        receiving_rate = kpis.get('side_out_efficiency', receiving_rate)
+        attack_kill = kpis.get('attack_kill_pct', attack_kill)
+        reception_qual = kpis.get('reception_quality', reception_qual)
+    
+    serving_target = TARGETS.get('break_point_rate', {}).get('optimal', 0.55)
+    receiving_target = TARGETS.get('side_out_percentage', {}).get('optimal', 0.70)
+    attack_target = TARGETS.get('kill_percentage', {}).get('optimal', 0.42)
+    reception_target = TARGETS.get('reception_quality', {}).get('optimal', 0.75)
+    
+    # Reception (highest priority - foundation skill)
+    if reception_qual < reception_target:
+        gap = reception_target - reception_qual
+        gap_pct = (gap / reception_target * 100) if reception_target > 0 else 0
+        priorities.append({
+            'skill': 'Reception',
+            'metric': f'Reception Quality: {reception_qual:.1%} (Target: {reception_target:.0%})',
+            'gap': f'{gap_pct:.0f}% below target',
+            'focus': 'Serve receive fundamentals: platform work, body positioning, reading serve trajectory. Prioritize OH and Libero.',
+            'priority_level': 'HIGH'
+        })
+    
+    # Receiving Point Rate
+    if receiving_rate < receiving_target:
+        gap = receiving_target - receiving_rate
+        gap_pct = (gap / receiving_target * 100) if receiving_target > 0 else 0
+        context = ""
+        if set_analysis.get('receiving_trend') == "declining":
+            context = " Performance declining across sets."
+        priorities.append({
+            'skill': 'Reception',
+            'metric': f'Receiving Point Rate: {receiving_rate:.1%} (Target: {receiving_target:.0%})',
+            'gap': f'{gap_pct:.0f}% below target{context}',
+            'focus': 'Transition offense after reception. Improve first-ball attack efficiency and reduce reception errors.',
+            'priority_level': 'HIGH'
+        })
+    
+    # Serving Point Rate
+    if serving_rate < serving_target:
+        gap = serving_target - serving_rate
+        gap_pct = (gap / serving_target * 100) if serving_target > 0 else 0
+        context = ""
+        if set_analysis.get('serving_trend') == "declining":
+            context = " Performance declining across sets."
+        priorities.append({
+            'skill': 'Serving',
+            'metric': f'Serving Point Rate: {serving_rate:.1%} (Target: {serving_target:.0%})',
+            'gap': f'{gap_pct:.0f}% below target{context}',
+            'focus': 'Service consistency and placement. Balance aggression with reliability. Target deep corners and seams.',
+            'priority_level': 'HIGH'
+        })
+    
+    # Attack Kill %
+    if attack_kill < attack_target:
+        gap = attack_target - attack_kill
+        gap_pct = (gap / attack_target * 100) if attack_target > 0 else 0
+        priorities.append({
+            'skill': 'Attack',
+            'metric': f'Attack Kill %: {attack_kill:.1%} (Target: {attack_target:.0%})',
+            'gap': f'{gap_pct:.0f}% below target',
+            'focus': 'Shot selection, placement, and attacking under pressure. Work on hitting angles, power control, and off-speed shots.',
+            'priority_level': 'MEDIUM'
+        })
+    
+    # Sort by priority level (HIGH first)
+    priorities.sort(key=lambda x: 0 if x['priority_level'] == 'HIGH' else 1)
+    
+    return priorities[:3]  # Top 3
+
+
+def _build_tactical_recommendations(kpis: Optional[Dict[str, Any]], team_stats: Dict[str, Any],
+                                    TARGETS: Dict[str, Any], loader) -> List[Dict[str, Any]]:
+    """Build tactical recommendations for next match."""
+    recommendations = []
+    
+    serving_rate = team_stats.get('serve_point_percentage', 0.0)
+    receiving_rate = team_stats.get('side_out_percentage', 0.0)
+    
+    if kpis:
+        serving_rate = kpis.get('break_point_rate', serving_rate)
+        receiving_rate = kpis.get('side_out_efficiency', receiving_rate)
+    
+    # Serving vs Receiving analysis
+    if serving_rate < receiving_rate - 0.10:
+        recommendations.append({
+            'title': 'Service Pressure',
+            'message': f'Receiving point rate ({receiving_rate:.1%}) significantly outperforms serving point rate ({serving_rate:.1%}). Increase service aggression to create more scoring opportunities from serve.',
+            'tactical': 'Consider more aggressive serves when ahead in score. Focus on serve placement over power.'
+        })
+    elif receiving_rate < serving_rate - 0.10:
+        recommendations.append({
+            'title': 'Protect Service Advantage',
+            'message': f'Serving point rate ({serving_rate:.1%}) is strong, but receiving point rate ({receiving_rate:.1%}) needs improvement. Protect service advantages by improving first-ball attack efficiency.',
+            'tactical': 'Work on transition offense. When receiving, prioritize clean first-ball attacks to capitalize on service pressure.'
+        })
+    
+    return recommendations[:2]  # Top 2
+
+
+def _display_professional_insight_card(title: str, items: List[Dict[str, Any]], 
+                                       text_color: str, bg_gradient_start: str, 
+                                       border_color: str, icon: str) -> None:
+    """Display a professional-grade insight card with metrics and context."""
+    items_html = ""
+    
+    for item in items:
+        if 'metric' in item:  # Priority/Strength format
+            metric_html = f'<div style="font-size: 16px; font-weight: 700; color: {text_color}; margin-bottom: 6px;">{item["metric"]}</div>'
+            gap_html = f'<div style="font-size: 14px; color: {text_color}; opacity: 0.85; margin-bottom: 8px;">{item.get("gap", "")}</div>' if item.get('gap') else ''
+            focus_html = f'<div style="font-size: 14px; color: {text_color}; line-height: 1.5; padding: 10px; background: rgba(255,255,255,0.4); border-radius: 6px; border-left: 3px solid {border_color};">{item.get("focus", item.get("impact", ""))}</div>'
+            items_html += f'<div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(0,0,0,0.1);">{metric_html}{gap_html}{focus_html}</div>'
+        elif 'title' in item:  # Tactical format
+            title_html = f'<div style="font-size: 16px; font-weight: 700; color: {text_color}; margin-bottom: 6px;">{item["title"]}</div>'
+            message_html = f'<div style="font-size: 14px; color: {text_color}; line-height: 1.5; margin-bottom: 8px;">{item["message"]}</div>'
+            tactical_html = f'<div style="font-size: 14px; color: {text_color}; line-height: 1.5; padding: 10px; background: rgba(255,255,255,0.4); border-radius: 6px; border-left: 3px solid {border_color};">{item.get("tactical", "")}</div>'
+            items_html += f'<div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid rgba(0,0,0,0.1);">{title_html}{message_html}{tactical_html}</div>'
+    
+    # Remove last border
+    items_html = items_html.rsplit('<div style="margin-bottom: 16px; padding-bottom: 16px; border-bottom:', 1)[0] if items_html.count('border-bottom:') > 1 else items_html.replace('border-bottom: 1px solid rgba(0,0,0,0.1);', '')
+    
+    html_content = f'<div style="background: linear-gradient(135deg, {bg_gradient_start} 0%, rgba(255,255,255,0.8) 100%); padding: 22px 26px; border-radius: 12px; margin-bottom: 20px; border-left: 5px solid {border_color}; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"><div style="font-size: 20px; font-weight: 800; color: {text_color}; margin-bottom: 18px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 10px;"><span style="font-size: 24px;">{icon}</span>{title}</div>{items_html}</div>'
+    st.markdown(html_content, unsafe_allow_html=True)

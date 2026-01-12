@@ -196,7 +196,7 @@ def create_event_tracker_template(output_path: str = "../templates/Event_Tracker
                     try:
                         if len(str(cell.value)) > max_length:
                             max_length = len(str(cell.value))
-                    except:
+                    except (TypeError, AttributeError):
                         pass
                 adjusted_width = min(max_length + 2, 50)
                 ws.column_dimensions[column_letter].width = adjusted_width

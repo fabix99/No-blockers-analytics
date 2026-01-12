@@ -1,9 +1,11 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from datetime import datetime
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class MatchAnalyzer:
     """
@@ -19,15 +21,22 @@ class MatchAnalyzer:
         if data_file and os.path.exists(data_file):
             self.load_match_data(data_file)
     
-    def load_match_data(self, filename):
-        """Load match data from Excel file"""
+    def load_match_data(self, filename: str) -> bool:
+        """Load match data from Excel file.
+        
+        Args:
+            filename: Path to the Excel file
+            
+        Returns:
+            True if successful, False otherwise
+        """
         try:
             self.match_data = pd.read_excel(filename, sheet_name='Raw_Data')
             self.data_file = filename
-            print(f"Loaded match data from {filename}")
+            logger.info(f"Loaded match data from {filename}")
             return True
         except Exception as e:
-            print(f"Error loading data: {e}")
+            logger.error(f"Error loading data: {e}")
             return False
     
     def calculate_team_metrics(self):

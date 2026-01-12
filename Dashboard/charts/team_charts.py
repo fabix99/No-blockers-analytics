@@ -112,19 +112,18 @@ def create_skill_performance_charts(analyzer: MatchAnalyzer, loader=None) -> Non
     
     # Attacking Performance
     st.markdown("### 🎯 Attacking Performance")
-    _create_attacking_performance_charts(df, analyzer, loader)
+    from charts.attack_charts import create_attacking_performance_charts
+    create_attacking_performance_charts(df, loader)
     
-    # Reception Performance
-    st.markdown("### 📥 Reception Performance")
-    _create_reception_performance_charts(df, loader)
-    
-    # Serving Performance
-    st.markdown("### 🎾 Serving Performance")
-    _create_serving_performance_charts(df, loader)
+    # Serve and Reception Performance
+    st.markdown("### 🎾 Serve and Reception Performance")
+    from charts.serve_reception_charts import create_serve_reception_performance_charts
+    create_serve_reception_performance_charts(df, loader)
     
     # Blocking Performance
     st.markdown("### 🛡️ Blocking Performance")
-    _create_blocking_performance_charts(df, loader)
+    from charts.blocking_charts import create_blocking_performance_charts
+    create_blocking_performance_charts(df, loader)
 
 
 def create_team_charts(analyzer: MatchAnalyzer, loader=None) -> None:
@@ -1603,7 +1602,7 @@ def _create_rally_length_distribution_chart(df: pd.DataFrame, loader=None) -> No
 
 
 def _create_point_by_point_progression_chart(df: pd.DataFrame, loader=None) -> None:
-    """Create chart showing point-by-point score progression (MEDIUM PRIORITY 31)."""
+    """Create chart showing point-by-point score progression - charts arranged side by side."""
     st.markdown("#### 📈 Point-by-Point Score Progression")
     
     if loader is None or not hasattr(loader, 'team_events'):
@@ -1622,68 +1621,126 @@ def _create_point_by_point_progression_chart(df: pd.DataFrame, loader=None) -> N
         # Group by set and point to get score progression
         sets = sorted(team_events['Set'].unique())
         
-        # Create side-by-side charts (3 columns)
-        num_sets = len(sets)
-        cols = st.columns(num_sets)
+        BRAND_BLUE = '#040C7B'  # Team color
+        OPPONENT_COLOR = '#E63946'  # Consistent red for opponent
         
-        for idx, set_num in enumerate(sets):
-            with cols[idx]:
-                set_data = team_events[team_events['Set'] == set_num].sort_values('Point')
+        # Determine layout based on number of sets
+        num_sets = len(sets)
+        if num_sets == 0:
+            return
+        
+        # Layout logic: 3 sets -> 3 columns, 4 sets -> 2 rows of 2, 5 sets -> 3 then 2
+        if num_sets <= 3:
+            # All sets in one row
+            cols = st.columns(num_sets)
+            rows = [sets]  # Single row
+        elif num_sets == 4:
+            # 2 rows of 2
+            cols = st.columns(2)
+            rows = [sets[:2], sets[2:]]
+        else:  # 5 or more sets
+            # 3 in first row, rest in second row
+            cols = st.columns(3)
+            rows = [sets[:3], sets[3:]]
+        
+        # Create charts for each set
+        charts_data = []
+        for set_num in sets:
+            set_data = team_events[team_events['Set'] == set_num].sort_values('Point')
+            
+            if 'Our_Score' in set_data.columns and 'Opponent_Score' in set_data.columns:
+                our_scores = set_data['Our_Score'].fillna(0).astype(int).tolist()
+                opp_scores = set_data['Opponent_Score'].fillna(0).astype(int).tolist()
+                points = list(range(1, len(our_scores) + 1))
                 
-                if 'Our_Score' in set_data.columns and 'Opponent_Score' in set_data.columns:
-                    our_scores = set_data['Our_Score'].fillna(0).astype(int).tolist()
-                    opp_scores = set_data['Opponent_Score'].fillna(0).astype(int).tolist()
-                    points = list(range(1, len(our_scores) + 1))
+                # Calculate set outcome
+                final_our = our_scores[-1] if our_scores else 0
+                final_opp = opp_scores[-1] if opp_scores else 0
+                
+                charts_data.append({
+                    'set_num': set_num,
+                    'points': points,
+                    'our_scores': our_scores,
+                    'opp_scores': opp_scores,
+                    'final_our': final_our,
+                    'final_opp': final_opp
+                })
+        
+        # Display charts in rows
+        for row_idx, row_sets in enumerate(rows):
+            if row_idx > 0:
+                # Add spacing between rows
+                st.markdown("<br>", unsafe_allow_html=True)
+            
+            row_cols = st.columns(len(row_sets)) if len(row_sets) <= 3 else st.columns(3)
+            
+            for col_idx, set_num in enumerate(row_sets):
+                chart_info = next((c for c in charts_data if c['set_num'] == set_num), None)
+                if chart_info is None:
+                    continue
+                
+                with row_cols[col_idx if len(row_sets) <= 3 else col_idx % 3]:
+                    # Calculate set outcome
+                    set_outcome = "Won" if chart_info['final_our'] > chart_info['final_opp'] else "Lost"
+                    outcome_color = "#28A745" if chart_info['final_our'] > chart_info['final_opp'] else "#DC3545"
+                    
+                    # Show set header
+                    st.markdown(f"""
+                    <div style="display: flex; justify-content: space-between; align-items: center; 
+                                padding: 8px 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px;">
+                        <span style="font-size: 16px; font-weight: 700; color: #040C7B;">
+                            Set {set_num}
+                        </span>
+                        <span style="font-size: 14px; color: {outcome_color}; font-weight: 600;">
+                            {chart_info['final_our']}-{chart_info['final_opp']}
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
                     fig = go.Figure()
                     
                     # Add our score trace
                     fig.add_trace(go.Scatter(
-                        x=points,
-                        y=our_scores,
+                        x=chart_info['points'],
+                        y=chart_info['our_scores'],
                         mode='lines+markers',
-                        name='Our Score',
-                        line=dict(color='#4A90E2', width=2),
-                        marker=dict(size=6),
-                        hovertemplate='Point %{x}<br>Our Score: %{y}<extra></extra>'
+                        name='Us',
+                        line=dict(color=BRAND_BLUE, width=2.5),
+                        marker=dict(size=4, color=BRAND_BLUE),
+                        hovertemplate='<b>Us</b><br>Rally %{x}<br>Score: %{y}<extra></extra>'
                     ))
                     
-                    # Add opponent score trace
+                    # Add opponent score trace (continuous line)
                     fig.add_trace(go.Scatter(
-                        x=points,
-                        y=opp_scores,
+                        x=chart_info['points'],
+                        y=chart_info['opp_scores'],
                         mode='lines+markers',
-                        name='Opponent Score',
-                        line=dict(color='#FF6B6B', width=2),
-                        marker=dict(size=6),
-                        hovertemplate='Point %{x}<br>Opponent Score: %{y}<extra></extra>'
+                        name='Opponent',
+                        line=dict(color=OPPONENT_COLOR, width=2.5),
+                        marker=dict(size=4, color=OPPONENT_COLOR, symbol='square'),
+                        hovertemplate='<b>Opponent</b><br>Rally %{x}<br>Score: %{y}<extra></extra>'
                     ))
-                    
-                    # Add final score annotation
-                    if len(our_scores) > 0 and len(opp_scores) > 0:
-                        final_our = our_scores[-1]
-                        final_opp = opp_scores[-1]
-                        fig.add_annotation(
-                            text=f"Final: {final_our}-{final_opp}",
-                            x=len(points),
-                            y=max(final_our, final_opp),
-                            showarrow=False,
-                            xanchor='left',
-                            font=dict(size=11, color='#050d76')
-                        )
                     
                     fig.update_layout(
-                        title=f"Set {set_num}",
-                        xaxis_title="Point Number",
+                        xaxis_title="Rally",
                         yaxis_title="Score",
-                        height=CHART_HEIGHTS['medium'],
-                        legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=0.02),
+                        height=350,
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=-0.25,
+                            xanchor="center",
+                            x=0.5,
+                            font=dict(size=11)
+                        ),
                         hovermode='x unified',
-                        xaxis=dict(tickfont=dict(color='#050d76')),
-                        yaxis=dict(tickfont=dict(color='#050d76'))
+                        margin=dict(l=40, r=30, t=10, b=55),
+                        xaxis=dict(tickfont=dict(color='#050d76', size=10)),
+                        yaxis=dict(tickfont=dict(color='#050d76', size=10))
                     )
-                    fig = apply_beautiful_theme(fig, f"Set {set_num} Score Progression")
-                    st.plotly_chart(fig, use_container_width=True, config=plotly_config, key=f"score_progression_set_{set_num}")
+                    fig = apply_beautiful_theme(fig)
+                    st.plotly_chart(fig, use_container_width=True, config=plotly_config, 
+                                   key=f"score_progression_set_{set_num}")
         
     except Exception as e:
         st.info(f"Score progression chart not available: {str(e)}")
@@ -2025,50 +2082,6 @@ def _create_rotation_heatmap(rotation_stats: Dict[int, Dict[str, float]],
     st.plotly_chart(fig_heatmap, use_container_width=True, config=plotly_config, key=f"rotation_heatmap_{selected_set_num if selected_set_num else 'all'}")
     
     # Rotation Usage Frequency removed - now integrated into heatmap above
-
-
-def _create_attack_type_distribution_chart(df: pd.DataFrame, loader=None) -> None:
-    """Create attack type distribution chart (overall match-level).
-    
-    Shows distribution of attack types: Normal, Tip, After Block
-    """
-    from utils.breakdown_helpers import get_attack_breakdown_by_type
-    
-    st.markdown("#### Attack Type Distribution")
-    breakdown = get_attack_breakdown_by_type(df, loader)
-    
-    if breakdown:
-        # Get totals for each attack type
-        normal_total = breakdown['normal']['total']
-        tip_total = breakdown['tip']['total']
-        after_block_total = breakdown['after_block']['total']
-        
-        total_attacks = normal_total + tip_total + after_block_total
-        
-        if total_attacks > 0:
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=['Normal', 'Tip', 'After Block'],
-                y=[normal_total, tip_total, after_block_total],
-                marker_color=[
-                    ATTACK_TYPE_COLORS['normal'],
-                    ATTACK_TYPE_COLORS['tip'],
-                    ATTACK_TYPE_COLORS['after_block']
-                ],
-                text=[normal_total, tip_total, after_block_total],
-        textposition='outside',
-        textfont=dict(size=11, color='#050d76')
-    ))
-            fig.update_layout(
-                title=f"Attack Type Distribution (n={total_attacks} attacks)",
-                height=CHART_HEIGHTS['medium'],
-                xaxis_title="Attack Type",
-                yaxis_title="Count",
-        xaxis=dict(tickfont=dict(color='#050d76')),
-                yaxis=dict(tickfont=dict(color='#050d76'))
-            )
-            fig = apply_beautiful_theme(fig, "Attack Type Distribution")
-            st.plotly_chart(fig, use_container_width=True, config=plotly_config, key="attack_type_dist_overall")
 
 
 def _create_attacking_performance_charts(df: pd.DataFrame, analyzer: MatchAnalyzer, loader=None) -> None:
