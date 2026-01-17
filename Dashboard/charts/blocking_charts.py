@@ -33,11 +33,13 @@ def create_blocking_performance_charts(df: pd.DataFrame, loader=None) -> None:
     """
     played_sets = get_played_sets(df, loader)
     
-    # Fixed order for consistent legend: Kills, Touches, Errors
-    block_order = ['Kills', 'Touches', 'Errors']
+    # Fixed order for consistent legend: Kills, Touches, Block - No Kill, No Touch, Errors
+    block_order = ['Kills', 'Touches', 'Block - No Kill', 'No Touch', 'Errors']
     block_color_map = {
         'Kills': OUTCOME_COLORS['kill'],
         'Touches': OUTCOME_COLORS.get('touch', '#FFC107'),
+        'Block - No Kill': OUTCOME_COLORS.get('block_no_kill', '#FF9800'),
+        'No Touch': OUTCOME_COLORS.get('no_touch', '#999999'),
         'Errors': OUTCOME_COLORS['error']
     }
     
@@ -72,14 +74,16 @@ def _create_block_distribution_chart(df: pd.DataFrame, played_sets: List[int], l
     # Calculate blocking data
     blocks = filtered_df[filtered_df['action'] == 'block']
     kills = len(blocks[blocks['outcome'] == 'kill'])
-    touches = len(blocks[blocks['outcome'].isin(['touch', 'good'])])
+    touches = len(blocks[blocks['outcome'] == 'touch'])
+    block_no_kill = len(blocks[blocks['outcome'] == 'block_no_kill'])
+    no_touch = len(blocks[blocks['outcome'] == 'no_touch'])
     errors = len(blocks[blocks['outcome'] == 'error'])
-    total = kills + touches + errors
+    total = kills + touches + block_no_kill + no_touch + errors
     
     # Display the chart
     if total > 0:
         _create_block_donut_chart(
-            {'Kills': kills, 'Touches': touches, 'Errors': errors},
+            {'Kills': kills, 'Touches': touches, 'Block - No Kill': block_no_kill, 'No Touch': no_touch, 'Errors': errors},
             block_order, block_color_map, total, 
             f"block_donut_{key_suffix}"
         )

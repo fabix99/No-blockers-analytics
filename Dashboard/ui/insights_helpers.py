@@ -90,7 +90,7 @@ def _generate_set_by_set_insights(
         attacks = set_df[set_df['action'] == 'attack']
         if len(attacks) > 0:
             kills = len(attacks[attacks['outcome'] == 'kill'])
-            errors = len(attacks[attacks['outcome'] == 'error'])
+            errors = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])])  # error removed
             eff = (kills - errors) / len(attacks)
             set_attack_eff.append({'set': set_num, 'efficiency': eff})
     

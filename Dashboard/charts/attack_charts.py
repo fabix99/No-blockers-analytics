@@ -51,11 +51,10 @@ def _create_attack_type_charts(df: pd.DataFrame, played_sets: List[int], loader=
     from utils.breakdown_helpers import get_attack_breakdown_by_type
     
     # Fixed order for consistent legend
-    attack_type_order = ['Normal', 'Tip', 'After Block']
+    attack_type_order = ['Normal', 'Tip']
     attack_type_color_map = {
         'Normal': ATTACK_TYPE_COLORS['normal'],
-        'Tip': ATTACK_TYPE_COLORS['tip'],
-        'After Block': ATTACK_TYPE_COLORS['after_block']
+        'Tip': ATTACK_TYPE_COLORS['tip']
     }
     
     # Use provided selected_set or default to 'All Sets'
@@ -79,12 +78,11 @@ def _create_attack_type_charts(df: pd.DataFrame, played_sets: List[int], loader=
     if breakdown:
         normal_total = breakdown['normal']['total']
         tip_total = breakdown['tip']['total']
-        after_block_total = breakdown['after_block']['total']
-        total_attacks = normal_total + tip_total + after_block_total
+        total_attacks = normal_total + tip_total
         
         if total_attacks > 0:
             _create_attack_type_donut(
-                {'Normal': normal_total, 'Tip': tip_total, 'After Block': after_block_total},
+                {'Normal': normal_total, 'Tip': tip_total},
                 attack_type_order, attack_type_color_map, title, total_attacks,
                 f"attack_type_donut_{key_suffix}"
             )
@@ -125,7 +123,7 @@ def _create_attack_quality_charts(df: pd.DataFrame, played_sets: List[int], load
     attacks = filtered_df[filtered_df['action'] == 'attack']
     kills = len(attacks[attacks['outcome'] == 'kill'])
     defended = len(attacks[attacks['outcome'].isin(['defended', 'good'])])
-    errors = len(attacks[attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])])
+    errors = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])])  # error removed
     total = kills + defended + errors
     
     # Display the chart

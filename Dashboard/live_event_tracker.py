@@ -24,7 +24,7 @@ dashboard_dir = Path(__file__).parent
 if str(dashboard_dir) not in sys.path:
     sys.path.insert(0, str(dashboard_dir))
 
-from config import VALID_ACTIONS, ACTION_OUTCOME_MAP, VALID_ATTACK_TYPES
+from config import VALID_ACTIONS, ACTION_OUTCOME_MAP, VALID_ATTACK_TYPES, get_outcome_label
 
 # ============================================================================
 # CONSTANTS
@@ -498,8 +498,8 @@ def add_event_to_rally(player: str, position: str, action: str, outcome: str, at
     if point_ended:
         auto_end_point(point_won)
 
-def add_opponent_error() -> None:
-    """Record opponent error - automatically ends point with us winning."""
+def add_opponent_lost_point() -> None:
+    """Record opponent lost point - automatically ends point with us winning."""
     if not can_add_event():
         st.warning("⚠️ Cannot add events right now. Match complete or set confirmation pending.")
         return
@@ -508,6 +508,18 @@ def add_opponent_error() -> None:
     event = create_event(OPPONENT_PLAYER, OPPONENT_POSITION, 'free_ball', 'error')
     st.session_state.current_rally_events.append(event)
     auto_end_point(point_won=True)
+
+def add_our_team_lost_point() -> None:
+    """Record our team lost point - automatically ends point with us losing."""
+    if not can_add_event():
+        st.warning("⚠️ Cannot add events right now. Match complete or set confirmation pending.")
+        return
+    
+    # Use 'free_ball' action with 'error' outcome to match validation requirements
+    # This represents a team error where no individual player is at fault
+    event = create_event('OUR_TEAM', 'TEAM', 'free_ball', 'error')
+    st.session_state.current_rally_events.append(event)
+    auto_end_point(point_won=False)
 
 def auto_end_point(point_won: bool) -> None:
     """Automatically end point without confirmation."""
@@ -618,10 +630,13 @@ def undo_last_event() -> None:
     # Determine if this event ended a point
     action = last_event.get('Action', '')
     outcome = last_event.get('Outcome', '')
-    is_opponent_error = last_event.get('Player') == OPPONENT_PLAYER and action == 'free_ball' and outcome == 'error'
+    is_opponent_lost_point = last_event.get('Player') == OPPONENT_PLAYER and action == 'free_ball' and outcome == 'error'
+    is_our_team_lost_point = last_event.get('Player') == 'OUR_TEAM' and action == 'free_ball' and outcome == 'error'
     
-    if is_opponent_error:
+    if is_opponent_lost_point:
         point_ended, point_won = True, True
+    elif is_our_team_lost_point:
+        point_ended, point_won = True, False
     else:
         point_ended, point_won = check_if_point_ended(action, outcome)
     
@@ -791,16 +806,17 @@ def export_to_excel() -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
         st.warning("⚠️ No events to export.")
         return None, None
     
-    # Filter out opponent error events (keep them in session state but exclude from export)
+    # Filter out opponent lost point and our team lost point events (keep them in session state but exclude from export)
     filtered_events = [
         event for event in st.session_state.individual_events
         if not (event.get('Player') == OPPONENT_PLAYER and 
                 event.get('Action') == 'free_ball' and 
-                event.get('Outcome') == 'error')
+                event.get('Outcome') == 'error' and
+                (event.get('Player') == OPPONENT_PLAYER or event.get('Player') == 'OUR_TEAM'))
     ]
     
     if not filtered_events:
-        st.warning("⚠️ No events to export (all events were opponent errors).")
+        st.warning("⚠️ No events to export (all events were opponent/team lost points).")
         return None, None
     
     df_individual = pd.DataFrame(filtered_events)
@@ -1707,7 +1723,6 @@ def get_available_actions(selected_position: Optional[str] = None) -> List[str]:
     1. Player position (Libero restrictions)
     2. Point type (serving/receiving)
     3. Already recorded actions in current rally
-    4. Previous action (can't dig twice in a row)
     """
     available = VALID_ACTIONS.copy()
     
@@ -1738,11 +1753,7 @@ def get_available_actions(selected_position: Optional[str] = None) -> List[str]:
         if 'receive' in recorded_actions:
             available = [a for a in available if a != 'receive']
         
-        # Cannot dig twice in a row (check last action)
-        if len(rally_events) > 0:
-            last_action = rally_events[-1].get('Action', '').lower()
-            if last_action == 'dig':
-                available = [a for a in available if a != 'dig']
+        # Note: Removed constraint preventing consecutive digs - liberos can dig multiple times in a row
     
     return available
 
@@ -1838,8 +1849,9 @@ def render_event_entry_form() -> None:
         for idx, outcome in enumerate(valid_outcomes):
             with outcome_cols[idx % num_cols]:
                 is_selected = st.session_state.selected_outcome == outcome
+                outcome_label = get_outcome_label(outcome).upper()
                 if st.button(
-                    outcome.upper(),
+                    outcome_label,
                     key=f"outcome_btn_{outcome}",
                     use_container_width=True,
                     type="primary" if is_selected else "secondary"
@@ -1871,21 +1883,36 @@ def render_event_entry_form() -> None:
     if st.session_state.selected_action == 'attack' and st.session_state.selected_outcome and not st.session_state.selected_attack_type:
         st.info("ℹ️ Select Attack Type to complete the event")
     
-    # Opponent Error Button
-    can_record_opponent_error = not (
+    # Opponent Lost Point Button
+    can_record_opponent_lost_point = not (
         st.session_state.point_type == POINT_TYPE_SERVING and 
         not st.session_state.current_rally_events
     )
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if can_record_opponent_error:
-            if st.button("❌ OPPONENT ERROR (We Win Point)", type="primary", use_container_width=True,
-                        help="Record opponent error - automatically ends point with us winning"):
-                add_opponent_error()
+    # Our Team Lost Point Button
+    can_record_our_team_lost_point = not (
+        st.session_state.point_type == POINT_TYPE_RECEIVING and 
+        not st.session_state.current_rally_events
+    )
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if can_record_opponent_lost_point:
+            if st.button("❌ OPPONENT LOST POINT (We Win)", type="primary", use_container_width=True,
+                        help="Record opponent lost point - automatically ends point with us winning"):
+                add_opponent_lost_point()
                 st.rerun()
         else:
-            st.info("ℹ️ Record your serve first before recording opponent error")
+            st.info("ℹ️ Record your serve first")
+    
+    with col3:
+        if can_record_our_team_lost_point:
+            if st.button("❌ OUR TEAM LOST POINT (We Lose)", type="primary", use_container_width=True,
+                        help="Record our team lost point - automatically ends point with us losing"):
+                add_our_team_lost_point()
+                st.rerun()
+        else:
+            st.info("ℹ️ Record opponent serve first")
     
     # Undo Button
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -2037,12 +2064,12 @@ def render_export_section() -> None:
     
     if st.session_state.get('show_preview', False):
         st.markdown("#### Individual Events Preview")
-        # Filter out opponent error events from preview (same as export)
+        # Filter out opponent lost point and our team lost point events from preview (same as export)
         filtered_events = [
             event for event in st.session_state.individual_events
-            if not (event.get('Player') == OPPONENT_PLAYER and 
-                    event.get('Action') == 'free_ball' and 
-                    event.get('Outcome') == 'error')
+            if not (event.get('Action') == 'free_ball' and 
+                    event.get('Outcome') == 'error' and
+                    (event.get('Player') == OPPONENT_PLAYER or event.get('Player') == 'OUR_TEAM'))
         ]
         df_individual = pd.DataFrame(filtered_events)
         st.dataframe(df_individual, use_container_width=True)

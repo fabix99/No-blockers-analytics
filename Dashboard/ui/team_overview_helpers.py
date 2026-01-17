@@ -531,7 +531,7 @@ def _display_pass_quality_analysis(analyzer: MatchAnalyzer, team_stats: Dict[str
                     quality_attacks = df[(df['action'] == 'attack') & (df['pass_quality'] == quality)]
                     if len(quality_attacks) > 0:
                         kills = len(quality_attacks[quality_attacks['outcome'] == 'kill'])
-                        errors = len(quality_attacks[quality_attacks['outcome'] == 'error'])
+                        errors = len(quality_attacks[quality_attacks['outcome'].isin(['blocked', 'out', 'net'])])  # error removed
                         efficiency = (kills - errors) / len(quality_attacks)
                         pass_attack_stats.append({
                             'Pass Quality': quality_label,

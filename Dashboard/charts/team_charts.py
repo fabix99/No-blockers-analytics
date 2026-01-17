@@ -832,9 +832,11 @@ def _create_quality_by_action_chart(df: pd.DataFrame, loader=None) -> None:
                 # For attacks, 'defended' is good; for sets, 'good' is good
                 if action == 'attack':
                     good = len(action_df[action_df['outcome'] == 'defended'])
+                    # Attack errors: blocked, out, net (error removed - all errors covered)
+                    errors = len(action_df[action_df['outcome'].isin(['blocked', 'out', 'net'])])
                 else:
                     good = len(action_df[action_df['outcome'] == 'good'])
-                errors = len(action_df[action_df['outcome'] == 'error'])
+                    errors = len(action_df[action_df['outcome'] == 'error'])
         
         # Only add if we have data
         if kills + good + errors > 0:
@@ -998,7 +1000,8 @@ def _create_set_by_set_charts(df: pd.DataFrame, analyzer: MatchAnalyzer, loader=
             metrics['attack_kills'] = len(attacks[attacks['outcome'] == 'kill'])
             # Attack 'defended' is considered good (kept in play)
             metrics['attack_good'] = len(attacks[attacks['outcome'] == 'defended'])
-            metrics['attack_errors'] = len(attacks[attacks['outcome'] == 'error'])
+            # Attack errors: blocked, out, net (error removed - all errors covered)
+            metrics['attack_errors'] = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])])
         
         # 6. Service Quality Distribution (Aces, Good, Errors)
         if loader and hasattr(loader, 'player_data_by_set') and set_num in loader.player_data_by_set:
@@ -1203,8 +1206,8 @@ def _create_set_by_set_charts(df: pd.DataFrame, analyzer: MatchAnalyzer, loader=
                 'defended': len(attacks[attacks['outcome'] == 'defended']),
                 'blocked': len(attacks[attacks['outcome'] == 'blocked']),
                 'out': len(attacks[attacks['outcome'] == 'out']),
-                'net': len(attacks[attacks['outcome'] == 'net']),
-                'error': len(attacks[attacks['outcome'] == 'error'])
+                'net': len(attacks[attacks['outcome'] == 'net'])
+                # 'error' removed from attack outcomes - all errors covered by 'blocked', 'out', 'net'
             }
         
     fig_attack = go.Figure()
@@ -1410,7 +1413,7 @@ def _create_set_by_set_charts(df: pd.DataFrame, analyzer: MatchAnalyzer, loader=
 
 
 def _create_attack_type_distribution_chart(df: pd.DataFrame, loader=None) -> None:
-    """Create chart showing attack breakdown by attack type (normal, tip, after_block) (MEDIUM PRIORITY 24)."""
+    """Create chart showing attack breakdown by attack type (normal, tip)."""
     from utils.breakdown_helpers import get_attack_breakdown_by_type
     
     st.markdown("#### 🎯 Attack Type Distribution")
@@ -1429,7 +1432,7 @@ def _create_attack_type_distribution_chart(df: pd.DataFrame, loader=None) -> Non
     # Create stacked bar chart
     fig = go.Figure()
     
-    attack_types = ['normal', 'tip', 'after_block']
+    attack_types = ['normal', 'tip']
     # Use standardized colors from config
     colors = ATTACK_TYPE_COLORS
     
@@ -1482,12 +1485,11 @@ def _create_attack_type_distribution_chart(df: pd.DataFrame, loader=None) -> Non
                 donut_labels = []
                 donut_values = []
                 
-                # Process in consistent order: normal, tip, after_block
-                attack_type_order = ['normal', 'tip', 'after_block']
+                # Process in consistent order: normal, tip
+                attack_type_order = ['normal', 'tip']
                 label_mapping = {
                     'normal': 'Normal',
-                    'tip': 'Tip',
-                    'after_block': 'After block'
+                    'tip': 'Tip'
                 }
                 
                 for attack_type in attack_type_order:
@@ -1501,8 +1503,7 @@ def _create_attack_type_distribution_chart(df: pd.DataFrame, loader=None) -> Non
                     # Map labels to colors explicitly to ensure consistency (use standardized colors)
                     label_to_color = {
                         'Normal': ATTACK_TYPE_COLORS.get('normal', '#4A90E2'),      # Blue
-                        'Tip': ATTACK_TYPE_COLORS.get('tip', '#F5A623'),             # Orange
-                        'After block': ATTACK_TYPE_COLORS.get('after_block', '#7ED321')  # Green
+                        'Tip': ATTACK_TYPE_COLORS.get('tip', '#F5A623')             # Orange
                     }
                     
                     # Create explicit color list matching the order of labels
@@ -2100,12 +2101,11 @@ def _create_attacking_performance_charts(df: pd.DataFrame, analyzer: MatchAnalyz
     all_sets_option = ['All Sets'] + [f'Set {s}' for s in played_sets]
     cols = st.columns(4)
     
-    # Fixed order for consistent legend: Normal, Tip, After Block
-    attack_type_order = ['Normal', 'Tip', 'After Block']
+    # Fixed order for consistent legend: Normal, Tip
+    attack_type_order = ['Normal', 'Tip']
     attack_type_color_map = {
         'Normal': ATTACK_TYPE_COLORS['normal'],
-        'Tip': ATTACK_TYPE_COLORS['tip'],
-        'After Block': ATTACK_TYPE_COLORS['after_block']
+        'Tip': ATTACK_TYPE_COLORS['tip']
     }
     
     for idx, set_option in enumerate(all_sets_option[:4]):  # Limit to 4 columns
@@ -2123,8 +2123,7 @@ def _create_attacking_performance_charts(df: pd.DataFrame, analyzer: MatchAnalyz
             if breakdown:
                 normal_total = breakdown['normal']['total']
                 tip_total = breakdown['tip']['total']
-                after_block_total = breakdown['after_block']['total']
-                total_attacks = normal_total + tip_total + after_block_total
+                total_attacks = normal_total + tip_total
                 
                 if total_attacks > 0:
                     # Build labels/values/colors in fixed order for consistent legend
@@ -2134,8 +2133,7 @@ def _create_attacking_performance_charts(df: pd.DataFrame, analyzer: MatchAnalyz
                     
                     type_data = {
                         'Normal': normal_total,
-                        'Tip': tip_total,
-                        'After Block': after_block_total
+                        'Tip': tip_total
                     }
                     
                     for attack_type in attack_type_order:
@@ -2191,8 +2189,8 @@ def _create_attacking_performance_charts(df: pd.DataFrame, analyzer: MatchAnalyz
     all_errors = (
         len(all_attacks[all_attacks['outcome'] == 'blocked']) +
         len(all_attacks[all_attacks['outcome'] == 'out']) +
-        len(all_attacks[all_attacks['outcome'] == 'net']) +
-        len(all_attacks[all_attacks['outcome'] == 'error'])
+        len(all_attacks[all_attacks['outcome'] == 'net'])
+        # 'error' removed - all errors covered by 'blocked', 'out', 'net'
     )
     all_total = all_kills + all_defended + all_errors
     
@@ -2597,22 +2595,24 @@ def _create_blocking_performance_charts(df: pd.DataFrame, loader=None) -> None:
     st.markdown("#### Block Performance by Set")
     played_sets = get_played_sets(df, loader)
     
-    # Fixed order for consistent legend: Kills, Touches, Missed, Errors
-    block_order = ['Kills', 'Touches', 'Missed', 'Errors']
+    # Fixed order for consistent legend: Kills, Touches, Block - No Kill, No Touch, Errors
+    block_order = ['Kills', 'Touches', 'Block - No Kill', 'No Touch', 'Errors']
     block_color_map = {
         'Kills': OUTCOME_COLORS['kill'],
         'Touches': OUTCOME_COLORS['touch'],
-        'Missed': OUTCOME_COLORS['missed'],
+        'Block - No Kill': OUTCOME_COLORS['block_no_kill'],
+        'No Touch': OUTCOME_COLORS['no_touch'],
         'Errors': OUTCOME_COLORS['error']
     }
     
     # Prepare data for all sets combined
     all_blocks = df[df['action'] == 'block']
     all_kills = len(all_blocks[all_blocks['outcome'] == 'kill'])
-    all_touches = len(filter_block_touches(all_blocks))
-    all_missed = len(all_blocks[all_blocks['outcome'] == 'missed'])
+    all_touches = len(all_blocks[all_blocks['outcome'] == 'touch'])
+    all_block_no_kill = len(all_blocks[all_blocks['outcome'] == 'block_no_kill'])
+    all_no_touch = len(all_blocks[all_blocks['outcome'] == 'no_touch'])
     all_errors = len(all_blocks[all_blocks['outcome'] == 'error'])
-    all_total = all_kills + all_touches + all_missed + all_errors
+    all_total = all_kills + all_touches + all_block_no_kill + all_no_touch + all_errors
     
     # Create 4 columns: All Sets + one for each set
     cols = st.columns(4)
@@ -2627,7 +2627,8 @@ def _create_blocking_performance_charts(df: pd.DataFrame, loader=None) -> None:
             block_data = {
                 'Kills': all_kills,
                 'Touches': all_touches,
-                'Missed': all_missed,
+                'Block - No Kill': all_block_no_kill,
+                'No Touch': all_no_touch,
                 'Errors': all_errors
             }
             
@@ -2675,10 +2676,11 @@ def _create_blocking_performance_charts(df: pd.DataFrame, loader=None) -> None:
             blocks_set = set_df[set_df['action'] == 'block']
             
             kills = len(blocks_set[blocks_set['outcome'] == 'kill'])
-            touches = len(filter_block_touches(blocks_set))
-            missed = len(blocks_set[blocks_set['outcome'] == 'missed'])
+            touches = len(blocks_set[blocks_set['outcome'] == 'touch'])
+            block_no_kill = len(blocks_set[blocks_set['outcome'] == 'block_no_kill'])
+            no_touch = len(blocks_set[blocks_set['outcome'] == 'no_touch'])
             errors = len(blocks_set[blocks_set['outcome'] == 'error'])
-            total = kills + touches + missed + errors
+            total = kills + touches + block_no_kill + no_touch + errors
             
             if total > 0:
                 labels = []
@@ -2688,7 +2690,8 @@ def _create_blocking_performance_charts(df: pd.DataFrame, loader=None) -> None:
                 block_data = {
                     'Kills': kills,
                     'Touches': touches,
-                    'Missed': missed,
+                    'Block - No Kill': block_no_kill,
+                    'No Touch': no_touch,
                     'Errors': errors
                 }
                 

@@ -312,7 +312,7 @@ def _create_mini_attack_kill_chart(player_df: pd.DataFrame, player_data: Dict[st
         values = [1]
         colors_list = ['#E0E0E0']
     else:
-        attack_errors = len(attacks[attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])]) if len(attacks) > 0 else 0
+        attack_errors = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])]) if len(attacks) > 0 else 0  # error removed
         attack_good = attack_attempts - attack_kills - attack_errors
         
         if attack_kills > 0:

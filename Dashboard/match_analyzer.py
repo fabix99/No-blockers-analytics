@@ -53,8 +53,9 @@ class MatchAnalyzer:
         # Attack efficiency - using event-based outcomes
         attacks = df[df['action'] == 'attack']
         attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-        # Attack errors include: error, blocked, out, net (all negative outcomes)
-        attack_errors = len(attacks[attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])])
+        # Attack errors include: blocked, out, net (all negative outcomes)
+        # Note: 'error' removed - all errors covered by 'out', 'net', 'blocked'
+        attack_errors = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])])
         # Attack 'defended' is a good outcome (kept in play) but not a kill
         attack_attempts = len(attacks)
         attack_efficiency = (attack_kills - attack_errors) / attack_attempts if attack_attempts > 0 else 0
@@ -233,7 +234,7 @@ class MatchAnalyzer:
         reception_efficiency = (good_receives - reception_errors) / total_receives if total_receives > 0 else 0
         
         # Error Rates (by action type)
-        # Attack errors include: error, blocked, out, net
+        # Attack errors include: blocked, out, net (error removed - all covered)
         attack_error_rate = attack_errors / attack_attempts if attack_attempts > 0 else 0
         service_error_rate = service_errors / service_attempts if service_attempts > 0 else 0
         block_error_rate = block_errors / block_attempts if block_attempts > 0 else 0
@@ -297,8 +298,9 @@ class MatchAnalyzer:
             # Attack stats - using event-based outcomes
             attacks = player_data[player_data['action'] == 'attack']
             attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-            # Attack errors include: error, blocked, out, net
-            attack_errors = len(attacks[attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])])
+            # Attack errors include: blocked, out, net
+            # Note: 'error' removed - all errors covered by 'out', 'net', 'blocked'
+            attack_errors = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])])
             attack_attempts = len(attacks)
             attack_efficiency = (attack_kills - attack_errors) / attack_attempts if attack_attempts > 0 else 0
             
@@ -374,8 +376,9 @@ class MatchAnalyzer:
             # Attack stats - using event-based outcomes
             attacks = rotation_data[rotation_data['action'] == 'attack']
             attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-            # Attack errors include: error, blocked, out, net
-            attack_errors = len(attacks[attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])])
+            # Attack errors include: blocked, out, net
+            # Note: 'error' removed - all errors covered by 'out', 'net', 'blocked'
+            attack_errors = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])])
             attack_attempts = len(attacks)
             attack_efficiency = (attack_kills - attack_errors) / attack_attempts if attack_attempts > 0 else 0
             

@@ -8,39 +8,37 @@ from utils.helpers import filter_good_receptions, filter_good_digs, filter_block
 
 
 def get_attack_breakdown_by_type(df: pd.DataFrame, loader=None) -> Dict[str, Dict[str, int]]:
-    """Get attack breakdown by attack type (normal, tip, after_block).
+    """Get attack breakdown by attack type (normal, tip).
     
     Returns:
-        Dict with keys: 'normal', 'tip', 'after_block'
-        Each value is a dict with: 'kills', 'errors', 'defended', 'total'
+        Dict with keys: 'normal', 'tip'
+        Each value is a dict with: 'kills', 'defended', 'blocked', 'out', 'net', 'total'
+        Note: 'error' removed from attack outcomes - all errors covered by 'out', 'net', 'blocked'
     """
     attacks = df[df['action'] == 'attack']
     breakdown = {
-        'normal': {'kills': 0, 'errors': 0, 'defended': 0, 'blocked': 0, 'out': 0, 'net': 0, 'total': 0},
-        'tip': {'kills': 0, 'errors': 0, 'defended': 0, 'blocked': 0, 'out': 0, 'net': 0, 'total': 0},
-        'after_block': {'kills': 0, 'errors': 0, 'defended': 0, 'blocked': 0, 'out': 0, 'net': 0, 'total': 0}
+        'normal': {'kills': 0, 'defended': 0, 'blocked': 0, 'out': 0, 'net': 0, 'total': 0},
+        'tip': {'kills': 0, 'defended': 0, 'blocked': 0, 'out': 0, 'net': 0, 'total': 0}
     }
     
     if 'Attack_Type' in attacks.columns:
-        for attack_type in ['normal', 'tip', 'after_block']:
+        for attack_type in ['normal', 'tip']:
             type_attacks = attacks[attacks['Attack_Type'].str.lower().str.strip() == attack_type]
             breakdown[attack_type]['kills'] = len(type_attacks[type_attacks['outcome'] == 'kill'])
             breakdown[attack_type]['defended'] = len(type_attacks[type_attacks['outcome'] == 'defended'])
             breakdown[attack_type]['blocked'] = len(type_attacks[type_attacks['outcome'] == 'blocked'])
             breakdown[attack_type]['out'] = len(type_attacks[type_attacks['outcome'] == 'out'])
             breakdown[attack_type]['net'] = len(type_attacks[type_attacks['outcome'] == 'net'])
-            breakdown[attack_type]['errors'] = len(type_attacks[type_attacks['outcome'] == 'error'])
             breakdown[attack_type]['total'] = len(type_attacks)
     elif 'attack_type' in attacks.columns:
         # Handle lowercase column name (from match_data processing)
-        for attack_type in ['normal', 'tip', 'after_block']:
+        for attack_type in ['normal', 'tip']:
             type_attacks = attacks[attacks['attack_type'].str.lower().str.strip() == attack_type]
             breakdown[attack_type]['kills'] = len(type_attacks[type_attacks['outcome'] == 'kill'])
             breakdown[attack_type]['defended'] = len(type_attacks[type_attacks['outcome'] == 'defended'])
             breakdown[attack_type]['blocked'] = len(type_attacks[type_attacks['outcome'] == 'blocked'])
             breakdown[attack_type]['out'] = len(type_attacks[type_attacks['outcome'] == 'out'])
             breakdown[attack_type]['net'] = len(type_attacks[type_attacks['outcome'] == 'net'])
-            breakdown[attack_type]['errors'] = len(type_attacks[type_attacks['outcome'] == 'error'])
             breakdown[attack_type]['total'] = len(type_attacks)
     else:
         # If Attack_Type column doesn't exist, assume all are 'normal'
@@ -49,7 +47,6 @@ def get_attack_breakdown_by_type(df: pd.DataFrame, loader=None) -> Dict[str, Dic
         breakdown['normal']['blocked'] = len(attacks[attacks['outcome'] == 'blocked'])
         breakdown['normal']['out'] = len(attacks[attacks['outcome'] == 'out'])
         breakdown['normal']['net'] = len(attacks[attacks['outcome'] == 'net'])
-        breakdown['normal']['errors'] = len(attacks[attacks['outcome'] == 'error'])
         breakdown['normal']['total'] = len(attacks)
     
     return breakdown
@@ -90,15 +87,17 @@ def get_dig_breakdown_by_quality(df: pd.DataFrame, loader=None) -> Dict[str, int
 
 
 def get_block_breakdown_by_outcome(df: pd.DataFrame, loader=None) -> Dict[str, int]:
-    """Get block breakdown by outcome (kill, touch, error).
+    """Get block breakdown by outcome (kill, touch, block_no_kill, no_touch, error).
     
     Returns:
-        Dict with keys: 'kill', 'touch', 'error', 'total'
+        Dict with keys: 'kill', 'touch', 'block_no_kill', 'no_touch', 'error', 'total'
     """
     blocks = df[df['action'] == 'block']
     breakdown = {
         'kill': len(blocks[blocks['outcome'] == 'kill']),
-        'touch': len(filter_block_touches(blocks)),
+        'touch': len(blocks[blocks['outcome'] == 'touch']),
+        'block_no_kill': len(blocks[blocks['outcome'] == 'block_no_kill']),
+        'no_touch': len(blocks[blocks['outcome'] == 'no_touch']),
         'error': len(blocks[blocks['outcome'] == 'error']),
         'total': len(blocks)
     }

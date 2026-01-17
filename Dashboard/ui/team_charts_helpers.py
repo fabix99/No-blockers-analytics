@@ -100,7 +100,7 @@ def _calculate_set_metrics(df: pd.DataFrame) -> pd.DataFrame:
         # Attack efficiency
         attacks = set_df[set_df['action'] == 'attack']
         attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-        attack_errors = len(attacks[attacks['outcome'] == 'error'])
+        attack_errors = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])])  # error removed
         attack_eff = (attack_kills - attack_errors) / len(attacks) if len(attacks) > 0 else 0
         
         # Service efficiency
@@ -368,7 +368,7 @@ def _create_pass_quality_charts(df: pd.DataFrame, team_stats: Dict[str, Any]) ->
                 quality_attacks = df[(df['action'] == 'attack') & (df['pass_quality'] == quality)]
                 if len(quality_attacks) > 0:
                     kills = len(quality_attacks[quality_attacks['outcome'] == 'kill'])
-                    errors = len(quality_attacks[quality_attacks['outcome'] == 'error'])
+                    errors = len(quality_attacks[quality_attacks['outcome'].isin(['blocked', 'out', 'net'])])  # error removed
                     efficiency = (kills - errors) / len(quality_attacks)
                     pass_attack_stats.append({
                         'Pass Quality': quality_label,

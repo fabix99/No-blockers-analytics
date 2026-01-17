@@ -98,7 +98,7 @@ def create_player_charts(analyzer: MatchAnalyzer, player_name: str, loader=None)
 
 
 def _create_attack_outcome_breakdown(player_df: pd.DataFrame, player_name: str) -> None:
-    """Create attack outcome breakdown chart showing all outcomes (Kill, Defended, Blocked, Out, Net, Error)."""
+    """Create attack outcome breakdown chart showing all outcomes (Kill, Defended, Blocked, Out, Net)."""
     attacks = player_df[player_df['action'] == 'attack']
     
     if len(attacks) == 0:
@@ -106,13 +106,12 @@ def _create_attack_outcome_breakdown(player_df: pd.DataFrame, player_name: str) 
     
     st.markdown("#### 🏐 Attack Outcome Breakdown")
     
-    # Count all outcomes
+    # Count all outcomes (error removed - all errors covered by out, net, blocked)
     kills = len(attacks[attacks['outcome'] == 'kill'])
     defended = len(attacks[attacks['outcome'] == 'defended'])
     blocked = len(attacks[attacks['outcome'] == 'blocked'])
     out = len(attacks[attacks['outcome'] == 'out'])
     net = len(attacks[attacks['outcome'] == 'net'])
-    errors = len(attacks[attacks['outcome'] == 'error'])
     
     # Group outcomes
     labels = []
@@ -139,10 +138,6 @@ def _create_attack_outcome_breakdown(player_df: pd.DataFrame, player_name: str) 
         labels.append('Net')
         values.append(net)
         colors_list.append(OUTCOME_COLORS.get('net', '#DC3545'))
-    if errors > 0:
-        labels.append('Error')
-        values.append(errors)
-        colors_list.append(OUTCOME_COLORS.get('error', '#DC3545'))
     
     if labels:
         fig = go.Figure(data=[go.Bar(
@@ -422,7 +417,8 @@ def _create_outcome_distribution_chart(player_df: pd.DataFrame) -> None:
         'blocked': 'Errors',
         'out': 'Errors',
         'net': 'Errors',
-        'missed': 'Errors'
+        'no_touch': 'No Touch',
+        'block_no_kill': 'Block - No Kill'
     }
     
     grouped_counts = {'Kills': 0, 'Positive': 0, 'Neutral': 0, 'Errors': 0}
@@ -488,7 +484,7 @@ def _create_attacker_specific_charts(player_df: pd.DataFrame, analyzer: MatchAna
                 type_colors = {
                     'normal': ATTACK_TYPE_COLORS.get('normal', '#4A90E2'),
                     'tip': ATTACK_TYPE_COLORS.get('tip', '#F5A623'),
-                    'after_block': ATTACK_TYPE_COLORS.get('after_block', '#7ED321')
+                    # 'after_block' removed - no longer tracking
                 }
                 colors = [type_colors.get(t.lower(), '#999999') for t in attack_types.index]
                 
@@ -523,7 +519,7 @@ def _create_attacker_specific_charts(player_df: pd.DataFrame, analyzer: MatchAna
                 type_attacks = attacks[attacks['attack_type'] == attack_type]
                 if len(type_attacks) > 0:
                     kills = len(type_attacks[type_attacks['outcome'] == 'kill'])
-                    errors = len(type_attacks[type_attacks['outcome'].isin(['error', 'blocked', 'out', 'net'])])
+                    errors = len(type_attacks[type_attacks['outcome'].isin(['blocked', 'out', 'net'])])  # error removed
                     attempts = len(type_attacks)
                     efficiency = ((kills - errors) / attempts * 100) if attempts > 0 else 0
                     type_efficiency[attack_type] = efficiency

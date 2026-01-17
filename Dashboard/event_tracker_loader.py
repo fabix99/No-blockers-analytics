@@ -244,12 +244,13 @@ class EventTrackerLoader:
         if action == 'attack':
             if outcome == 'kill':
                 stats['Attack_Kills'] = stats.get('Attack_Kills', 0) + 1
-            elif outcome in ['out', 'net', 'error']:
+            elif outcome in ['out', 'net']:
                 stats['Attack_Errors'] = stats.get('Attack_Errors', 0) + 1
             elif outcome == 'blocked':
                 stats['Attack_Errors'] = stats.get('Attack_Errors', 0) + 1  # Blocked is an error
             elif outcome == 'defended':
                 stats['Attack_Good'] = stats.get('Attack_Good', 0) + 1
+            # Note: 'error' removed from attack outcomes - all errors covered by 'out', 'net', 'blocked'
             stats['Attack_Total'] = stats.get('Attack_Total', 0) + 1
         
         elif action == 'serve':
@@ -266,6 +267,11 @@ class EventTrackerLoader:
                 stats['Block_Kills'] = stats.get('Block_Kills', 0) + 1
             elif outcome == 'touch':
                 stats['Block_Touches'] = stats.get('Block_Touches', 0) + 1
+            elif outcome == 'block_no_kill':
+                stats['Block_Touches'] = stats.get('Block_Touches', 0) + 1  # Count as touch (ball was touched)
+            elif outcome == 'no_touch':
+                # Block attempted but didn't touch ball - doesn't count as error, just no touch
+                pass  # Don't increment any stat, but still count in total
             elif outcome == 'error':
                 stats['Block_Errors'] = stats.get('Block_Errors', 0) + 1
             stats['Block_Total'] = stats.get('Block_Total', 0) + 1
