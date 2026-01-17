@@ -41,3 +41,6 @@ logs/
 
 # Markdown files
 *.md
+
+# Data folders
+Data No Blockers/
