@@ -4,7 +4,7 @@ Helper utility functions for data processing and player information
 from typing import Optional, List
 import pandas as pd
 import re
-from datetime import datetime
+from datetime import datetime, date
 
 
 def get_player_df(df: pd.DataFrame, player_name: str) -> pd.DataFrame:
@@ -249,7 +249,7 @@ def count_good_outcomes(df: pd.DataFrame, action: str) -> int:
     return 0
 
 
-def extract_date_from_filename(filename: str) -> Optional[datetime.date]:
+def extract_date_from_filename(filename: str) -> Optional[date]:
     """Extract date from filename (expects format with YYYY-MM-DD pattern).
     
     Args:
