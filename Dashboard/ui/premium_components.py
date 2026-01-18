@@ -441,7 +441,7 @@ def display_premium_section_header(title: str, icon: str = "📊", subtitle: str
     """
     subtitle_html = f'<div style="font-size: 14px; color: #666; margin-top: 4px; font-weight: 400;">{subtitle}</div>' if subtitle else ''
     
-    html_content = f'<div style="margin-top: 16px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid rgba(4, 12, 123, 0.1);"><div style="display: flex; align-items: center; gap: 12px;"><span style="font-size: 28px;">{icon}</span><div><div style="font-size: 24px; font-weight: 700; color: {BRAND_BLUE};">{title}</div>{subtitle_html}</div></div></div>'
+    html_content = f'<div style="margin-top: 4px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 2px solid rgba(4, 12, 123, 0.1);"><div style="display: flex; align-items: center; gap: 12px;"><span style="font-size: 28px;">{icon}</span><div><div style="font-size: 24px; font-weight: 700; color: {BRAND_BLUE};">{title}</div>{subtitle_html}</div></div></div>'
     
     st.markdown(html_content, unsafe_allow_html=True)
 

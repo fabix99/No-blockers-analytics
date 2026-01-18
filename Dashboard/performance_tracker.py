@@ -522,12 +522,14 @@ def compute_team_kpis_from_loader(loader):
             'block_kills': int(block_kills),
             'block_touches': int(block_touches),
             'block_errors': int(block_errors),
+            'block_no_kill': int(block_touches),  # block_no_kill is counted as touches in aggregated data
             'serving_rallies': int(serving_rallies),
             'serving_points_won': int(serving_points_won),
             'receiving_rallies': int(receiving_rallies),
             'receiving_points_won': int(receiving_points_won),
             'reception_total': int(rec_total),
             'reception_good': int(rec_good),
+            'reception_errors': int(rec_total - rec_good),  # Add reception_errors to totals
             'dig_total': int(dig_total),
             'dig_good': int(dig_good)
         }

@@ -33,12 +33,13 @@ def create_blocking_performance_charts(df: pd.DataFrame, loader=None) -> None:
     """
     played_sets = get_played_sets(df, loader)
     
-    # Fixed order for consistent legend: Kills, Touches, Block - No Kill, No Touch, Errors
-    block_order = ['Kills', 'Touches', 'Block - No Kill', 'No Touch', 'Errors']
+    # Fixed order for consistent legend: Kills, Block - No Kill, Touches, No Touch, Errors
+    # Block - No Kill is better than Touch (ball went back but didn't finish point vs just touched)
+    block_order = ['Kills', 'Block - No Kill', 'Touches', 'No Touch', 'Errors']
     block_color_map = {
         'Kills': OUTCOME_COLORS['kill'],
-        'Touches': OUTCOME_COLORS.get('touch', '#FFC107'),
-        'Block - No Kill': OUTCOME_COLORS.get('block_no_kill', '#FF9800'),
+        'Block - No Kill': OUTCOME_COLORS['good'],  # Light green (better outcome)
+        'Touches': OUTCOME_COLORS.get('block_no_kill', '#FF9800'),  # Orange
         'No Touch': OUTCOME_COLORS.get('no_touch', '#999999'),
         'Errors': OUTCOME_COLORS['error']
     }
@@ -93,83 +94,109 @@ def _create_block_distribution_chart(df: pd.DataFrame, played_sets: List[int], l
 
 def _create_block_kill_trend_chart(df: pd.DataFrame, played_sets: List[int], loader=None, 
                                     selected_set: str = None) -> None:
-    """Create block kill % trend chart across sets with improved styling."""
+    """Create stacked bar chart showing all block outcomes by set with same color scheme as reception chart."""
     
-    # Get block kill % by set
-    if loader and hasattr(loader, 'player_data_by_set'):
-        from utils.breakdown_helpers import get_kpi_by_set
-        block_kill_by_set = get_kpi_by_set(loader, 'block_kill_pct')
-    else:
-        # Fallback: calculate from dataframe
-        block_kill_by_set = {}
-        for set_num in played_sets:
-            set_blocks = df[df['action'] == 'block']
-            set_blocks = set_blocks[set_blocks['set_number'] == set_num]
-            block_kills = len(set_blocks[set_blocks['outcome'] == 'kill'])
-            block_total = len(set_blocks)
-            if block_total > 0:
-                block_kill_by_set[set_num] = block_kills / block_total
-            else:
-                block_kill_by_set[set_num] = 0.0
+    # Get block outcomes by set - similar to reception quality distribution
+    block_details_by_set = {}
+    sets_to_process = played_sets
     
-    if not block_kill_by_set:
+    # Filter sets if specific set selected
+    if selected_set and selected_set != 'All Sets':
+        set_num = int(selected_set.split()[-1])
+        sets_to_process = [set_num] if set_num in played_sets else []
+    
+    for set_num in sets_to_process:
+        set_df = df[df['set_number'] == set_num]
+        blocks = set_df[set_df['action'] == 'block']
+        
+        # Map block outcomes - separate all categories like the donut chart
+        block_details_by_set[set_num] = {
+            'kill': len(blocks[blocks['outcome'] == 'kill']),
+            'touch': len(blocks[blocks['outcome'] == 'touch']),
+            'block_no_kill': len(blocks[blocks['outcome'] == 'block_no_kill']),
+            'no_touch': len(blocks[blocks['outcome'] == 'no_touch']),
+            'error': len(blocks[blocks['outcome'] == 'error'])
+        }
+    
+    if not block_details_by_set or not any(sum(v.values()) > 0 for v in block_details_by_set.values()):
         st.info("No block data available")
         return
     
-    # Show all sets in trend
-    sets_to_show = sorted(block_kill_by_set.keys())
-    
-    if not sets_to_show:
-        st.info("No block data available")
-        return
-    
-    # Create line chart with improved styling
+    # Create stacked bar chart
     fig = go.Figure()
     
-    # Use brand blue color for consistency
-    block_color = OUTCOME_COLORS.get('kill', '#00C853')  # Green for block kills
-    
-    fig.add_trace(go.Scatter(
-        x=[f"Set {s}" for s in sets_to_show],
-        y=[block_kill_by_set[s] * 100 for s in sets_to_show],
-        mode='lines+markers',
-        name='Block Kill %',
-        line=dict(color=block_color, width=3.5, shape='spline'),
-        marker=dict(size=12, color=block_color, line=dict(width=2, color='white')),
-        fill='tozeroy',
-        fillcolor=f'rgba(0, 200, 83, 0.12)',
-        hovertemplate='<b>Set %{x}</b><br>Block Kill %: %{y:.1f}%<extra></extra>'
+    # Use same color scheme as donut chart - must match exactly
+    # Kill
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in sets_to_process],
+        y=[block_details_by_set.get(s, {}).get('kill', 0) for s in sets_to_process],
+        name='Kills',
+        marker_color=OUTCOME_COLORS['kill'],  # Match donut chart
+        text=[block_details_by_set.get(s, {}).get('kill', 0) for s in sets_to_process],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
     ))
     
-    fig = apply_beautiful_theme(fig, "", legend_position='bottom')
+    # Block - No Kill → Light green (better than Touch - ball went back but didn't finish point)
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in sets_to_process],
+        y=[block_details_by_set.get(s, {}).get('block_no_kill', 0) for s in sets_to_process],
+        name='Block - No Kill',
+        marker_color=OUTCOME_COLORS['good'],  # Light green - match donut chart
+        text=[block_details_by_set.get(s, {}).get('block_no_kill', 0) for s in sets_to_process],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # Touch → Orange
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in sets_to_process],
+        y=[block_details_by_set.get(s, {}).get('touch', 0) for s in sets_to_process],
+        name='Touches',
+        marker_color=OUTCOME_COLORS.get('block_no_kill', '#FF9800'),  # Orange - match donut chart
+        text=[block_details_by_set.get(s, {}).get('touch', 0) for s in sets_to_process],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # No Touch → Gray
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in sets_to_process],
+        y=[block_details_by_set.get(s, {}).get('no_touch', 0) for s in sets_to_process],
+        name='No Touch',
+        marker_color=OUTCOME_COLORS.get('no_touch', '#999999'),  # Gray - match donut chart
+        text=[block_details_by_set.get(s, {}).get('no_touch', 0) for s in sets_to_process],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # Error → Red
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in sets_to_process],
+        y=[block_details_by_set.get(s, {}).get('error', 0) for s in sets_to_process],
+        name='Errors',
+        marker_color=OUTCOME_COLORS['error'],  # Red - match donut chart
+        text=[block_details_by_set.get(s, {}).get('error', 0) for s in sets_to_process],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # Calculate total block attempts for sample size
+    total_block_attempts = sum(sum(block_details_by_set.get(s, {}).values()) for s in sets_to_process)
     
     fig.update_layout(
-        title=dict(text="Block Kill % by Set", font=dict(size=14, color='#050d76'), x=0.5, xanchor='center'),
-        xaxis_title="",
-        yaxis_title="",
-        height=350,
-        margin=dict(l=20, r=20, t=50, b=40),
-        yaxis=dict(
-            range=[0, max(100, max([block_kill_by_set[s] * 100 for s in sets_to_show]) * 1.1)],
-            tickfont=dict(size=12, color='#666'),
-            tickformat='.0f',
-            gridcolor='rgba(0,0,0,0.05)',
-            gridwidth=1,
-            showline=False,
-            zeroline=False
-        ),
-        xaxis=dict(
-            tickfont=dict(size=12, color='#666'),
-            showline=False,
-            gridcolor='rgba(0,0,0,0.05)',
-            gridwidth=1
-        ),
-        showlegend=False,
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)'
+        title=f"Block Outcomes Distribution (n={total_block_attempts} blocks)",
+        xaxis_title="Set Number",
+        yaxis_title="Count",
+        barmode='stack',
+        xaxis=dict(dtick=1, tickfont=dict(color='#050d76')),
+        yaxis=dict(tickfont=dict(color='#050d76')),
+        legend=dict(orientation="v", yanchor="top", y=1, xanchor="right", x=1.02)
     )
-    
-    st.plotly_chart(fig, use_container_width=True, config=plotly_config, key=f"block_kill_trend_{selected_set}")
+    fig = apply_beautiful_theme(fig, "Block Outcomes Distribution", height=350)
+    # Override height and margins after theme to match donut chart height (350px)
+    fig.update_layout(height=350, margin=dict(l=40, r=30, t=50, b=40))
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config, key=f"block_outcomes_{selected_set}")
 
 
 def _create_block_donut_chart(block_data: dict, block_order: list, 
@@ -198,7 +225,7 @@ def _create_block_donut_chart(block_data: dict, block_order: list,
         textinfo='percent+label',
         textfont=dict(size=14, color='#050d76', family='Inter, sans-serif'),
         hovertemplate='<b>%{label}</b><br>Count: %{value}<br>Percentage: %{percent}<extra></extra>',
-        domain=dict(x=[0, 1], y=[0.15, 0.95])
+        domain=dict(x=[0, 1], y=[0, 1])
     )])
     
     fig = apply_beautiful_theme(fig, "", legend_position='bottom')
@@ -207,7 +234,8 @@ def _create_block_donut_chart(block_data: dict, block_order: list,
         title=dict(text="Block Performance Distribution", font=dict(size=14, color='#050d76'), x=0.5, xanchor='center'),
         height=350,
         showlegend=False,
-        margin=dict(l=0, r=0, t=50, b=40)
+        margin=dict(l=20, r=20, t=50, b=40),
+        autosize=True
     )
     
     st.plotly_chart(fig, use_container_width=True, config=plotly_config, key=key)

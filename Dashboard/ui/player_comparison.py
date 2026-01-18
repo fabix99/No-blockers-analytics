@@ -8,13 +8,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 from match_analyzer import MatchAnalyzer
 from config import KPI_TARGETS, OUTCOME_COLORS, CHART_HEIGHTS
-from utils.helpers import get_player_position, filter_good_receptions, filter_good_digs, filter_block_touches
+from utils.helpers import get_player_position, get_player_df, filter_good_receptions, filter_good_digs, filter_block_touches
 from ui.components import get_position_full_name
 from charts.utils import apply_beautiful_theme, plotly_config
 from utils.statistical_helpers import (
     calculate_confidence_interval, get_reliability_indicator, 
     is_sample_size_sufficient, format_ci_display, get_statistical_significance_indicator
 )
+from services.kpi_calculator import KPICalculator
 
 
 def display_player_comparison(analyzer: MatchAnalyzer, loader=None) -> None:
@@ -45,6 +46,9 @@ def display_player_comparison(analyzer: MatchAnalyzer, loader=None) -> None:
     # Create comparison dataframe with new KPIs and ratings
     comparison_data = []
     for player, stats in player_stats.items():
+        # Skip OUR_TEAM - it's just for logging mistakes, not a real player
+        if player.upper() == 'OUR_TEAM':
+            continue
         position = get_player_position(df, player) or 'Unknown'
         is_setter = stats.get('total_sets', 0) > 0 and stats.get('total_sets', 0) >= stats['total_actions'] * 0.2
         
@@ -67,7 +71,7 @@ def display_player_comparison(analyzer: MatchAnalyzer, loader=None) -> None:
                     total_receptions += float(stats_agg.get('Reception_Total', 0) or 0)
             # Only add if not already counted in action rows
             # Check if digs/receptions are in action rows
-            player_df = df[df['player'] == player]
+            player_df = get_player_df(df, player)
             if len(player_df[player_df['action'] == 'dig']) == 0:
                 total_actions += int(total_digs)
             if len(player_df[player_df['action'] == 'receive']) < total_receptions:
@@ -539,154 +543,35 @@ def _display_top_performers_visual(comparison_df: pd.DataFrame) -> None:
 def _calculate_player_kpis_for_comparison(analyzer: MatchAnalyzer, player_name: str, 
                                           player_data: Dict[str, Any], position: Optional[str],
                                           is_setter: bool, loader=None) -> Dict[str, float]:
-    """Calculate player KPIs consistent with Team Overview metrics."""
+    """Calculate player KPIs using centralized KPICalculator.
+    
+    All calculations are now delegated to KPICalculator to ensure consistency.
+    """
+    kpi_calc = KPICalculator(analyzer=analyzer, loader=loader)
     df = analyzer.match_data
-    player_df = df[df['player'] == player_name]
+    player_df = get_player_df(df, player_name)
     
-    metrics = {}
+    # Use centralized calculation methods for all KPIs
+    metrics = {
+        'attack_kill_pct': kpi_calc.calculate_player_attack_kill_pct(player_name),
+        'reception_quality': kpi_calc.calculate_player_reception_quality(player_name),
+        'dig_rate': kpi_calc.calculate_player_dig_rate(player_name),
+        'block_kill_pct': kpi_calc.calculate_player_block_kill_pct(player_name),
+        'setting_quality': kpi_calc.calculate_player_setting_quality(player_name),
+    }
     
-    # Attack Kill % (consistent with Team Overview)
-    # Calculate for all players - will be used if they have attempts
-    # Try to get from loader aggregated stats first (more accurate), otherwise use player_data
-    attack_attempts = 0
-    attack_kills = 0
-    if loader and hasattr(loader, 'player_data_by_set'):
-        for set_num in loader.player_data_by_set.keys():
-            if player_name in loader.player_data_by_set[set_num]:
-                stats = loader.player_data_by_set[set_num][player_name].get('stats', {})
-                attack_attempts += float(stats.get('Attack_Total', 0) or 0)
-                attack_kills += float(stats.get('Attack_Kills', 0) or 0)
-    
-    if attack_attempts == 0:
-        # Fallback: use player_data from MatchAnalyzer
-        attack_attempts = player_data.get('attack_attempts', 0)
-        attack_kills = player_data.get('attack_kills', 0)
-    
-    if attack_attempts > 0:
-        metrics['attack_kill_pct'] = attack_kills / attack_attempts
-        # Also get attack good for weighted scoring
-        attacks = player_df[player_df['action'] == 'attack']
-        # Attack 'defended' is considered good (kept in play)
-        metrics['attack_good'] = len(attacks[attacks['outcome'] == 'defended'])
-    else:
-        metrics['attack_kill_pct'] = 0.0
-        metrics['attack_good'] = 0
-    
-    # Serve In-Rate (consistent with Team Overview)
-    # Liberos don't serve - exclude for position 'L'
+    # Serve In-Rate - Liberos don't serve
     if position == 'L':
         metrics['serve_in_rate'] = 0.0
     else:
-        # Try to get from loader aggregated stats first (more accurate), otherwise use player_data
-        service_attempts = 0
-        service_aces = 0
-        service_good = 0
-        if loader and hasattr(loader, 'player_data_by_set'):
-            for set_num in loader.player_data_by_set.keys():
-                if player_name in loader.player_data_by_set[set_num]:
-                    stats = loader.player_data_by_set[set_num][player_name].get('stats', {})
-                    service_attempts += float(stats.get('Service_Total', 0) or 0)
-                    service_aces += float(stats.get('Service_Aces', 0) or 0)
-                    service_good += float(stats.get('Service_Good', 0) or 0)
-        
-        if service_attempts == 0:
-            # Fallback: use player_data from MatchAnalyzer
-            service_attempts = player_data.get('service_attempts', 0)
-            service_aces = player_data.get('service_aces', 0)
-            serves = player_df[player_df['action'] == 'serve']
-            service_good = len(serves[serves['outcome'] == 'good'])
-        
-        if service_attempts > 0:
-            metrics['serve_in_rate'] = (service_aces + service_good) / service_attempts
-        else:
-            metrics['serve_in_rate'] = 0.0
+        metrics['serve_in_rate'] = kpi_calc.calculate_player_serve_in_rate(player_name)
     
-    # Reception Quality (consistent with Team Overview)
-    if loader and hasattr(loader, 'player_data_by_set'):
-        total_rec_good = 0.0
-        total_rec_total = 0.0
-        for set_num in loader.player_data_by_set.keys():
-            if player_name in loader.player_data_by_set[set_num]:
-                stats = loader.player_data_by_set[set_num][player_name].get('stats', {})
-                total_rec_good += float(stats.get('Reception_Good', 0) or 0)
-                total_rec_total += float(stats.get('Reception_Total', 0) or 0)
-        if total_rec_total > 0:
-            metrics['reception_quality'] = total_rec_good / total_rec_total
-        else:
-            receives = player_df[player_df['action'] == 'receive']
-            total_receives = len(receives)
-            if total_receives > 0:
-                good_receives = len(filter_good_receptions(receives))
-                metrics['reception_quality'] = good_receives / total_receives
-            else:
-                metrics['reception_quality'] = 0.0
-    else:
-        receives = player_df[player_df['action'] == 'receive']
-        total_receives = len(receives)
-        if total_receives > 0:
-            good_receives = len(filter_good_receptions(receives))
-            metrics['reception_quality'] = good_receives / total_receives
-        else:
-            metrics['reception_quality'] = 0.0
+    # Additional data extraction (not KPI calculations, just counts)
+    attacks = player_df[player_df['action'] == 'attack']
+    metrics['attack_good'] = len(attacks[attacks['outcome'] == 'defended'])
     
-    # Dig Rate (consistent with Team Overview)
-    if loader and hasattr(loader, 'player_data_by_set'):
-        total_dig_good = 0.0
-        total_dig_total = 0.0
-        for set_num in loader.player_data_by_set.keys():
-            if player_name in loader.player_data_by_set[set_num]:
-                stats = loader.player_data_by_set[set_num][player_name].get('stats', {})
-                total_dig_good += float(stats.get('Dig_Good', 0) or 0)
-                total_dig_total += float(stats.get('Dig_Total', 0) or 0)
-        if total_dig_total > 0:
-            metrics['dig_rate'] = total_dig_good / total_dig_total
-        else:
-            metrics['dig_rate'] = 0.0
-    else:
-        metrics['dig_rate'] = 0.0
-    
-    # Block Kill % (consistent with Team Overview)
-    # Calculate for all players - will be used if they have attempts
-    # Try to get from loader aggregated stats first (more accurate), otherwise use player_data
-    block_attempts = 0
-    block_kills = 0
-    if loader and hasattr(loader, 'player_data_by_set'):
-        for set_num in loader.player_data_by_set.keys():
-            if player_name in loader.player_data_by_set[set_num]:
-                stats = loader.player_data_by_set[set_num][player_name].get('stats', {})
-                block_attempts += float(stats.get('Block_Total', 0) or 0)
-                block_kills += float(stats.get('Block_Kills', 0) or 0)
-    
-    if block_attempts == 0:
-        # Fallback: use player_data from MatchAnalyzer
-        block_attempts = player_data.get('block_attempts', 0)
-        block_kills = player_data.get('block_kills', 0)
-    
-    if block_attempts > 0:
-        metrics['block_kill_pct'] = block_kills / block_attempts
-        # Also get block touches for weighted scoring
-        blocks = player_df[player_df['action'] == 'block']
-        metrics['block_touches'] = len(filter_block_touches(blocks))
-    else:
-        metrics['block_kill_pct'] = 0.0
-        metrics['block_touches'] = 0
-    
-    # Setting Quality - check from action rows first (more accurate for all players)
-    # Calculate for all players - will be used as bonus if they set well
-    sets = player_df[player_df['action'] == 'set']
-    total_sets_count = len(sets)
-    if total_sets_count > 0:
-        # Good sets = exceptional + good (both count as good)
-        good_sets_count = len(sets[sets['outcome'].isin(['exceptional', 'good'])])
-        metrics['setting_quality'] = good_sets_count / total_sets_count
-    else:
-        # Fallback to player_data if available
-        total_sets = player_data.get('total_sets', 0)
-        if total_sets > 0:
-            good_sets = player_data.get('good_sets', 0)
-            metrics['setting_quality'] = good_sets / total_sets
-        else:
-            metrics['setting_quality'] = 0.0
+    blocks = player_df[player_df['action'] == 'block']
+    metrics['block_touches'] = len(filter_block_touches(blocks))
     
     return metrics
 

@@ -5,6 +5,7 @@ Helper functions for calculating breakdowns by various dimensions
 from typing import Dict, Any, List, Optional, Tuple
 import pandas as pd
 from utils.helpers import filter_good_receptions, filter_good_digs, filter_block_touches
+from services.kpi_calculator import KPICalculator
 
 
 def get_attack_breakdown_by_type(df: pd.DataFrame, loader=None) -> Dict[str, Dict[str, int]]:
@@ -138,6 +139,9 @@ def get_kpi_by_player(loader, kpi_name: str, return_totals: bool = False) -> Dic
     
     for set_num in loader.player_data_by_set.keys():
         for player in loader.player_data_by_set[set_num].keys():
+            # Skip OUR_TEAM - it's just for logging mistakes, not a real player
+            if str(player).upper() == 'OUR_TEAM':
+                continue
             if player not in player_kpis:
                 player_kpis[player] = {
                     'attack_kills': 0, 'attack_attempts': 0,
@@ -316,10 +320,11 @@ def get_kpi_by_set(loader, kpi_name: str) -> Dict[int, float]:
     
     for set_num in loader.player_data_by_set.keys():
         set_kpis[set_num] = {
-            'attack_kills': 0, 'attack_attempts': 0,
-            'service_aces': 0, 'service_good': 0, 'service_attempts': 0,
+            'attack_kills': 0, 'attack_attempts': 0, 'attack_errors': 0,
+            'service_aces': 0, 'service_good': 0, 'service_attempts': 0, 'service_errors': 0,
             'block_kills': 0, 'block_attempts': 0,
             'reception_good': 0, 'reception_total': 0,
+            'dig_good': 0, 'dig_total': 0,
             'serving_rallies': 0, 'serving_points_won': 0,
             'receiving_rallies': 0, 'receiving_points_won': 0
         }
@@ -328,13 +333,17 @@ def get_kpi_by_set(loader, kpi_name: str) -> Dict[int, float]:
             stats = loader.player_data_by_set[set_num][player].get('stats', {})
             set_kpis[set_num]['attack_kills'] += float(stats.get('Attack_Kills', 0) or 0)
             set_kpis[set_num]['attack_attempts'] += float(stats.get('Attack_Total', 0) or 0)
+            set_kpis[set_num]['attack_errors'] += float(stats.get('Attack_Errors', 0) or 0)
             set_kpis[set_num]['service_aces'] += float(stats.get('Service_Aces', 0) or 0)
             set_kpis[set_num]['service_good'] += float(stats.get('Service_Good', 0) or 0)
             set_kpis[set_num]['service_attempts'] += float(stats.get('Service_Total', 0) or 0)
+            set_kpis[set_num]['service_errors'] += float(stats.get('Service_Errors', 0) or 0)
             set_kpis[set_num]['block_kills'] += float(stats.get('Block_Kills', 0) or 0)
             set_kpis[set_num]['block_attempts'] += float(stats.get('Block_Total', 0) or 0)
             set_kpis[set_num]['reception_good'] += float(stats.get('Reception_Good', 0) or 0)
             set_kpis[set_num]['reception_total'] += float(stats.get('Reception_Total', 0) or 0)
+            set_kpis[set_num]['dig_good'] += float(stats.get('Dig_Good', 0) or 0)
+            set_kpis[set_num]['dig_total'] += float(stats.get('Dig_Total', 0) or 0)
         
         # Add team data
         if set_num in loader.team_data_by_set:
@@ -344,21 +353,45 @@ def get_kpi_by_set(loader, kpi_name: str) -> Dict[int, float]:
             set_kpis[set_num]['receiving_rallies'] = float(team_stats.get('receiving_rallies', 0) or 0)
             set_kpis[set_num]['receiving_points_won'] = float(team_stats.get('receiving_points_won', 0) or 0)
     
-    # Calculate KPIs
+    # Calculate KPIs using centralized calculation methods
     result = {}
     for set_num, totals in set_kpis.items():
         if kpi_name == 'attack_kill_pct':
-            result[set_num] = (totals['attack_kills'] / totals['attack_attempts']) if totals['attack_attempts'] > 0 else 0.0
+            result[set_num] = KPICalculator.calculate_attack_kill_pct_from_totals(
+                totals['attack_kills'], totals['attack_attempts']
+            )
+        elif kpi_name == 'attack_error_rate':
+            result[set_num] = KPICalculator.calculate_attack_error_rate_from_totals(
+                totals['attack_errors'], totals['attack_attempts']
+            )
         elif kpi_name == 'serve_in_rate':
-            result[set_num] = ((totals['service_aces'] + totals['service_good']) / totals['service_attempts']) if totals['service_attempts'] > 0 else 0.0
+            result[set_num] = KPICalculator.calculate_serve_in_rate_from_totals(
+                totals['service_aces'], totals['service_good'], totals['service_attempts']
+            )
+        elif kpi_name == 'serve_error_rate':
+            result[set_num] = KPICalculator.calculate_serve_error_rate_from_totals(
+                totals['service_errors'], totals['service_attempts']
+            )
         elif kpi_name == 'block_kill_pct':
-            result[set_num] = (totals['block_kills'] / totals['block_attempts']) if totals['block_attempts'] > 0 else 0.0
+            result[set_num] = KPICalculator.calculate_block_kill_pct_from_totals(
+                totals['block_kills'], totals['block_attempts']
+            )
         elif kpi_name == 'reception_quality':
-            result[set_num] = (totals['reception_good'] / totals['reception_total']) if totals['reception_total'] > 0 else 0.0
+            result[set_num] = KPICalculator.calculate_reception_quality_from_totals(
+                totals['reception_good'], totals['reception_total']
+            )
+        elif kpi_name == 'dig_quality':
+            result[set_num] = KPICalculator.calculate_dig_rate_from_totals(
+                totals['dig_good'], totals['dig_total']
+            )
         elif kpi_name == 'break_point_rate':
-            result[set_num] = (totals['serving_points_won'] / totals['serving_rallies']) if totals['serving_rallies'] > 0 else 0.0
+            result[set_num] = KPICalculator.calculate_break_point_rate_from_totals(
+                totals['serving_points_won'], totals['serving_rallies']
+            )
         elif kpi_name == 'side_out_efficiency':
-            result[set_num] = (totals['receiving_points_won'] / totals['receiving_rallies']) if totals['receiving_rallies'] > 0 else 0.0
+            result[set_num] = KPICalculator.calculate_side_out_efficiency_from_totals(
+                totals['receiving_points_won'], totals['receiving_rallies']
+            )
     
     return result
 

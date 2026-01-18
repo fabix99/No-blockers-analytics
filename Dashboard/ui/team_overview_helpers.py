@@ -9,6 +9,7 @@ import plotly.express as px
 from match_analyzer import MatchAnalyzer
 from event_tracker_loader import EventTrackerLoader
 from services.session_manager import SessionStateManager
+from services.kpi_calculator import KPICalculator
 from utils.helpers import filter_good_receptions, filter_good_digs
 from utils.formatters import get_performance_color
 from config import KPI_TARGETS
@@ -16,32 +17,46 @@ import performance_tracker as pt
 
 
 def _display_metric_styling() -> None:
-    """Display CSS styling for metrics."""
+    """Display CSS styling for metrics - optimized and consolidated."""
     st.markdown(
         """
         <style>
-        /* Remove background colors from delta metrics, only show colored arrows */
+        /* Metric components - consolidated */
         div[data-testid="stMetricDelta"] {
             background-color: transparent !important;
             padding: 0 !important;
+            font-size: 1rem !important;
         }
-        div[data-testid="stMetricDelta"] svg {
-            color: inherit !important;
-        }
+        div[data-testid="stMetricDelta"] svg,
         div[data-testid="stMetricDelta"] > div {
             background-color: transparent !important;
+            color: inherit !important;
         }
         div[data-testid="stMetricValue"] {
             font-size: 2.5rem !important;
             font-weight: 700 !important;
+            padding: 0 !important;
+            margin-top: 0 !important;
+            padding-top: 0 !important;
         }
         div[data-testid="stMetricLabel"] {
             font-size: 1.1rem !important;
             font-weight: 600 !important;
+            padding: 0 !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
         }
-        div[data-testid="stMetricDelta"] {
-            font-size: 1rem !important;
+        div[data-testid="stMetricContainer"] {
+            padding: 0.1rem 0.25rem !important;
+            gap: 0 !important;
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-bottom: 0 !important;
+            min-height: auto !important;
+            height: auto !important;
         }
+        /* Info buttons */
         button[key^="info_"] {
             font-size: 1.3rem !important;
             width: 32px !important;
@@ -53,83 +68,72 @@ def _display_metric_styling() -> None:
             opacity: 1 !important;
             transform: scale(1.15);
         }
-        div[data-testid="stMetricContainer"] {
-            padding: 0.25rem 0.5rem !important;
+        button[key^="info_btn_"] {
+            font-size: 0.75rem !important;
+            width: 24px !important;
+            height: 24px !important;
+            opacity: 0.6 !important;
+            background: transparent !important;
+            border: 1px solid #ddd !important;
+            border-radius: 3px !important;
         }
-        div[data-testid="stMetricLabel"],
-        div[data-testid="stMetricValue"],
-        div[data-testid="stMetricDelta"] {
-            padding: 0 !important;
+        button[key^="info_btn_"]:hover {
+            opacity: 1 !important;
+            background: #f0f0f0 !important;
         }
+        /* Layout containers - consolidated */
         div[data-testid="column"] {
-            padding-left: 0.5rem !important;
+            padding-left: 0.25rem !important;
             padding-right: 0.5rem !important;
-            padding-top: 0.25rem !important;
-            padding-bottom: 0.25rem !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
             min-height: auto !important;
             height: auto !important;
+        }
+        /* Shift score progression charts to the left */
+        div[data-testid="stElementContainer"]:has(div[data-testid="stPlotlyChart"]:has(div[key*="score_progression"])) {
+            margin-left: -15px !important;
+            padding-left: 0 !important;
+        }
+        div[data-testid="stElementContainer"]:has(div[data-testid="stPlotlyChart"]:has(div[key*="score_progression"])) > div {
+            margin-left: 0 !important;
         }
         div[data-testid="column"] > div {
             min-height: auto !important;
             height: auto !important;
         }
-        .element-container {
-            padding: 0 !important;
-            min-height: auto !important;
-            height: auto !important;
-        }
-        div[data-testid="stMarkdownContainer"],
-        div[data-testid="stMetricContainer"] {
-            min-height: auto !important;
-            height: auto !important;
-        }
-        h4, h3 {
-            font-size: 1.15rem !important;
-        }
-        div[data-testid="stMarkdownContainer"] p strong {
-            font-size: 1.15rem !important;
-            line-height: 1.2 !important;
-            margin-bottom: 0 !important;
-            padding-bottom: 0 !important;
-        }
-        div[data-testid="stMarkdownContainer"] p {
-            margin-bottom: 0 !important;
-            padding-bottom: 0 !important;
-            line-height: 1.2 !important;
-        }
-        div[data-testid="stMetricContainer"] {
-            gap: 0rem !important;
-            padding-top: 0 !important;
-            margin-top: 0 !important;
-        }
-        div[data-testid="stMetricLabel"] {
-            margin-bottom: 0 !important;
-            padding-bottom: 0 !important;
-        }
-        div[data-testid="stMetricValue"] {
-            margin-top: 0 !important;
-            padding-top: 0 !important;
-        }
-        div[data-testid="stMarkdownContainer"] {
-            margin-bottom: 0 !important;
-            padding-bottom: 0 !important;
-            margin-top: 0 !important;
-        }
-        .element-container {
-            margin-top: 0 !important;
-            margin-bottom: 0 !important;
-            padding-top: 0 !important;
-            padding-bottom: 0 !important;
+        div[data-testid="column"] + div[data-testid="column"] {
+            margin-left: 0 !important;
         }
         div[data-testid="column"] > .element-container:has(div[data-testid="column"]) + .element-container {
             margin-top: 0.5rem !important;
         }
+        .element-container {
+            padding: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            min-height: auto !important;
+            height: auto !important;
+        }
+        /* Markdown and text containers - consolidated */
         div[data-testid="stMarkdownContainer"],
         div[data-testid="stMetricContainer"] {
             margin-top: 0 !important;
             margin-bottom: 0 !important;
             padding-top: 0 !important;
             padding-bottom: 0 !important;
+            min-height: auto !important;
+            height: auto !important;
+        }
+        /* Hide specific empty markdown container between match header and Core Performance Metrics */
+        div[data-testid="stElementContainer"]:nth-child(2) > div[data-testid="stMarkdownContainer"]:has(> div.st-emotion-cache-ai037n:empty),
+        div[data-testid="stElementContainer"]:nth-child(2) > div[data-testid="stMarkdownContainer"]:empty {
+            display: none !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         div[data-testid="stMarkdownContainer"] p {
             margin: 0 !important;
@@ -137,9 +141,49 @@ def _display_metric_styling() -> None:
             line-height: 1 !important;
         }
         div[data-testid="stMarkdownContainer"] p strong {
+            font-size: 1.15rem !important;
+            line-height: 1 !important;
             margin: 0 !important;
             padding: 0 !important;
-            line-height: 1 !important;
+        }
+        div[data-testid="stCaptionContainer"] {
+            margin-top: 0.05rem !important;
+            margin-bottom: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        div[data-testid="stCaptionContainer"] > p {
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1.1 !important;
+        }
+        /* Headings */
+        h4, h3 {
+            font-size: 1.15rem !important;
+        }
+        /* Ensure Plotly charts fit within their containers */
+        div[data-testid="stPlotlyChart"] {
+            overflow: hidden !important;
+            width: 100% !important;
+        }
+        div[data-testid="stPlotlyChart"] > div {
+            max-width: 100% !important;
+            width: 100% !important;
+            overflow: hidden !important;
+        }
+        div.plot-container.plotly {
+            max-width: 100% !important;
+            width: 100% !important;
+            overflow: hidden !important;
+        }
+        div.js-plotly-plot {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        div.user-select-none.svg-container {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: hidden !important;
         }
         </style>
         """,
@@ -229,7 +273,8 @@ def _display_kpi_metrics_row_1(
     analyzer: MatchAnalyzer,
     kpis: Optional[Dict[str, Any]],
     team_stats: Dict[str, Any],
-    targets: Dict[str, Dict[str, float]]
+    targets: Dict[str, Dict[str, float]],
+    loader=None
 ) -> None:
     """Display first row of KPI metrics (4 metrics).
     
@@ -257,10 +302,8 @@ def _display_kpi_metrics_row_1(
         # Serve In-Rate
         service_value = (kpis['serve_in_rate'] if kpis else None)
         if service_value is None:
-            serves = analyzer.match_data[analyzer.match_data['action'] == 'serve']
-            in_play = len(serves[(serves['outcome'].isin(['ace','good']))])
-            attempts = len(serves)
-            service_value = (in_play / attempts) if attempts > 0 else 0.0
+            kpi_calc = KPICalculator(analyzer=analyzer, loader=loader)
+            service_value = kpi_calc.calculate_serve_in_rate()
         serve_in_targets = targets.get('serve_in_rate', KPI_TARGETS.get('serve_in_rate', {'min': 0.85, 'max': 0.95, 'optimal': 0.90}))
         _render_single_metric(
             "Serve In-Rate",
@@ -274,10 +317,8 @@ def _display_kpi_metrics_row_1(
         # Attack Kill %
         attack_value = (kpis['attack_kill_pct'] if kpis else team_stats.get('kill_percentage', 0.0))
         if attack_value is None or (kpis is None and 'kill_percentage' not in team_stats):
-            attacks = analyzer.match_data[analyzer.match_data['action'] == 'attack']
-            attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-            attack_total = len(attacks)
-            attack_value = (attack_kills / attack_total) if attack_total > 0 else 0.0
+            kpi_calc = KPICalculator(analyzer=analyzer, loader=loader)
+            attack_value = kpi_calc.calculate_attack_kill_pct()
         attack_targets = targets.get('kill_percentage', KPI_TARGETS.get('kill_percentage', {'min': 0.35, 'max': 0.50, 'optimal': 0.42}))
         _render_single_metric(
             "Attack Kill %",
@@ -291,10 +332,8 @@ def _display_kpi_metrics_row_1(
         # Dig Rate
         dig_rate = (kpis['dig_rate'] if kpis else None)
         if dig_rate is None:
-            digs = analyzer.match_data[analyzer.match_data['action'] == 'dig']
-            dig_good = len(filter_good_digs(digs))
-            dig_total = len(digs)
-            dig_rate = (dig_good / dig_total) if dig_total > 0 else 0.0
+            kpi_calc = KPICalculator(analyzer=analyzer, loader=loader)
+            dig_rate = kpi_calc.calculate_dig_rate()
         dig_targets = targets.get('dig_rate', KPI_TARGETS.get('dig_rate', {'min': 0.65, 'max': 0.80, 'optimal': 0.70}))
         _render_single_metric(
             "Dig Rate",
@@ -340,10 +379,8 @@ def _display_kpi_metrics_row_2(
         # Reception Quality
         reception_quality = (kpis['reception_quality'] if kpis else None)
         if reception_quality is None:
-            receives = analyzer.match_data[analyzer.match_data['action'] == 'receive']
-            rec_good = len(filter_good_receptions(receives))
-            rec_total = len(receives)
-            reception_quality = (rec_good / rec_total) if rec_total > 0 else 0.0
+            kpi_calc = KPICalculator(analyzer=analyzer, loader=loader)
+            reception_quality = kpi_calc.calculate_reception_quality()
         reception_targets = targets.get('reception_quality', KPI_TARGETS.get('reception_quality', {'min': 0.70, 'max': 0.85, 'optimal': 0.75}))
         _render_single_metric(
             "Reception Quality",
@@ -357,10 +394,8 @@ def _display_kpi_metrics_row_2(
         # Block Kill %
         block_kill_pct = (kpis['block_kill_pct'] if kpis else None)
         if block_kill_pct is None:
-            blocks = analyzer.match_data[analyzer.match_data['action'] == 'block']
-            block_kills = len(blocks[blocks['outcome'] == 'kill'])
-            block_total = len(blocks)
-            block_kill_pct = (block_kills / block_total) if block_total > 0 else 0.0
+            kpi_calc = KPICalculator(analyzer=analyzer, loader=loader)
+            block_kill_pct = kpi_calc.calculate_block_kill_pct()
         block_kill_targets = targets.get('block_kill_percentage', KPI_TARGETS.get('block_kill_percentage', {'min': 0.05, 'max': 0.15, 'optimal': 0.10}))
         _render_single_metric(
             "Block Kill %",
@@ -374,17 +409,8 @@ def _display_kpi_metrics_row_2(
         # Avg Actions/Point (no target)
         avg_actions = (kpis['avg_actions_per_point'] if kpis else None)
         if avg_actions is None:
-            total_actions = len(analyzer.match_data)
-            if loader and hasattr(loader, 'team_data') and loader.team_data:
-                serving_rallies = sum(int(stats.get('serving_rallies', 0) or 0) for stats in loader.team_data.values())
-                receiving_rallies = sum(int(stats.get('receiving_rallies', 0) or 0) for stats in loader.team_data.values())
-                total_points = serving_rallies + receiving_rallies
-            else:
-                if 'point_id' in analyzer.match_data.columns:
-                    total_points = analyzer.match_data['point_id'].nunique()
-                else:
-                    total_points = analyzer.match_data['set_number'].nunique() * 25
-            avg_actions = (total_actions / total_points) if total_points > 0 else 0.0
+            kpi_calc = KPICalculator(analyzer=analyzer, loader=loader)
+            avg_actions = kpi_calc.calculate_avg_actions()
         
         label_col, icon_col, metric_col = st.columns([12, 1, 0.1], gap="small")
         with label_col:

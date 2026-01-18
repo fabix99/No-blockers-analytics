@@ -17,6 +17,12 @@ class MatchAnalyzer:
         self.match_data = None
         self.team_stats = {}
         self.player_stats = {}
+        # Cache for filtered DataFrames to avoid repeated operations
+        self._attacks_cache = None
+        self._serves_cache = None
+        self._blocks_cache = None
+        self._receives_cache = None
+        self._metrics_cache = None
         
         if data_file and os.path.exists(data_file):
             self.load_match_data(data_file)
@@ -33,16 +39,50 @@ class MatchAnalyzer:
         try:
             self.match_data = pd.read_excel(filename, sheet_name='Raw_Data')
             self.data_file = filename
+            # Clear caches when new data is loaded
+            self._attacks_cache = None
+            self._serves_cache = None
+            self._blocks_cache = None
+            self._receives_cache = None
+            self._metrics_cache = None
             logger.info(f"Loaded match data from {filename}")
             return True
         except Exception as e:
             logger.error(f"Error loading data: {e}")
             return False
     
+    def _get_attacks(self):
+        """Get cached attacks DataFrame."""
+        if self._attacks_cache is None and self.match_data is not None:
+            self._attacks_cache = self.match_data[self.match_data['action'] == 'attack']
+        return self._attacks_cache
+    
+    def _get_serves(self):
+        """Get cached serves DataFrame."""
+        if self._serves_cache is None and self.match_data is not None:
+            self._serves_cache = self.match_data[self.match_data['action'] == 'serve']
+        return self._serves_cache
+    
+    def _get_blocks(self):
+        """Get cached blocks DataFrame."""
+        if self._blocks_cache is None and self.match_data is not None:
+            self._blocks_cache = self.match_data[self.match_data['action'] == 'block']
+        return self._blocks_cache
+    
+    def _get_receives(self):
+        """Get cached receives DataFrame."""
+        if self._receives_cache is None and self.match_data is not None:
+            self._receives_cache = self.match_data[self.match_data['action'] == 'receive']
+        return self._receives_cache
+    
     def calculate_team_metrics(self):
-        """Calculate key team performance metrics"""
+        """Calculate key team performance metrics with caching"""
         if self.match_data is None:
             return None
+        
+        # Return cached metrics if available
+        if self._metrics_cache is not None:
+            return self._metrics_cache
         
         df = self.match_data
         
@@ -50,45 +90,65 @@ class MatchAnalyzer:
         total_actions = len(df)
         sets_played = df['set_number'].nunique()
         
-        # Attack efficiency - using event-based outcomes
-        attacks = df[df['action'] == 'attack']
-        attack_kills = len(attacks[attacks['outcome'] == 'kill'])
-        # Attack errors include: blocked, out, net (all negative outcomes)
-        # Note: 'error' removed - all errors covered by 'out', 'net', 'blocked'
-        attack_errors = len(attacks[attacks['outcome'].isin(['blocked', 'out', 'net'])])
-        # Attack 'defended' is a good outcome (kept in play) but not a kill
-        attack_attempts = len(attacks)
-        attack_efficiency = (attack_kills - attack_errors) / attack_attempts if attack_attempts > 0 else 0
+        # Attack efficiency - using cached filtered DataFrame and value_counts for efficiency
+        attacks = self._get_attacks()
+        if attacks is not None and len(attacks) > 0:
+            outcome_counts = attacks['outcome'].value_counts()
+            attack_kills = outcome_counts.get('kill', 0)
+            attack_errors = sum(outcome_counts.get(k, 0) for k in ['blocked', 'out', 'net'])
+            attack_attempts = len(attacks)
+            attack_efficiency = (attack_kills - attack_errors) / attack_attempts if attack_attempts > 0 else 0
+        else:
+            attack_kills = attack_errors = attack_attempts = 0
+            attack_efficiency = 0
         
-        # Service stats
-        serves = df[df['action'] == 'serve']
-        service_aces = len(serves[serves['outcome'] == 'ace'])
-        service_errors = len(serves[serves['outcome'] == 'error'])
-        service_attempts = len(serves)
-        service_efficiency = (service_aces - service_errors) / service_attempts if service_attempts > 0 else 0
+        # Service stats - using cached DataFrame and value_counts
+        serves = self._get_serves()
+        if serves is not None and len(serves) > 0:
+            outcome_counts = serves['outcome'].value_counts()
+            service_aces = outcome_counts.get('ace', 0)
+            service_errors = outcome_counts.get('error', 0)
+            service_attempts = len(serves)
+            service_efficiency = (service_aces - service_errors) / service_attempts if service_attempts > 0 else 0
+        else:
+            service_aces = service_errors = service_attempts = 0
+            service_efficiency = 0
         
-        # Blocking stats (including block touches)
-        blocks = df[df['action'] == 'block']
-        block_kills = len(blocks[blocks['outcome'] == 'kill'])
-        block_touches = len(blocks[blocks['outcome'] == 'touch'])  # Block touches (new outcome)
-        block_errors = len(blocks[blocks['outcome'] == 'error'])
-        block_attempts = len(blocks)
-        block_efficiency = (block_kills - block_errors) / block_attempts if block_attempts > 0 else 0
+        # Blocking stats - using cached DataFrame and value_counts
+        blocks = self._get_blocks()
+        if blocks is not None and len(blocks) > 0:
+            outcome_counts = blocks['outcome'].value_counts()
+            block_kills = outcome_counts.get('kill', 0)
+            block_touches = outcome_counts.get('touch', 0)
+            block_errors = outcome_counts.get('error', 0)
+            block_attempts = len(blocks)
+            block_efficiency = (block_kills - block_errors) / block_attempts if block_attempts > 0 else 0
+        else:
+            block_kills = block_touches = block_errors = block_attempts = 0
+            block_efficiency = 0
         
-        # Reception stats (for reception percentage - separate from side-out %)
-        receive_actions = df[df['action'] == 'receive']
-        # Use new outcomes: perfect, good (both count as good receptions)
-        good_receives = len(receive_actions[receive_actions['outcome'].isin(['perfect', 'good'])])
-        total_receives = len(receive_actions)
-        reception_percentage = good_receives / total_receives if total_receives > 0 else 0
+        # Reception stats - using cached DataFrame and value_counts
+        receive_actions = self._get_receives()
+        if receive_actions is not None and len(receive_actions) > 0:
+            outcome_counts = receive_actions['outcome'].value_counts()
+            good_receives = sum(outcome_counts.get(k, 0) for k in ['perfect', 'good'])
+            total_receives = len(receive_actions)
+            reception_percentage = good_receives / total_receives if total_receives > 0 else 0
+        else:
+            good_receives = total_receives = 0
+            reception_percentage = 0
         
         # Pass quality distribution given pass_quality column exists)
-        if 'pass_quality' in df.columns:
+        if 'pass_quality' in df.columns and receive_actions is not None and len(receive_actions) > 0:
             pass_qualities = receive_actions[receive_actions['pass_quality'].notna()]
-            perfect_passes = len(pass_qualities[pass_qualities['pass_quality'] == 1])
-            good_passes = len(pass_qualities[pass_qualities['pass_quality'] == 2])
-            poor_passes = len(pass_qualities[pass_qualities['pass_quality'] == 3])
-            total_passes_with_quality = len(pass_qualities)
+            if len(pass_qualities) > 0:
+                quality_counts = pass_qualities['pass_quality'].value_counts()
+                perfect_passes = int(quality_counts.get(1, 0))
+                good_passes = int(quality_counts.get(2, 0))
+                poor_passes = int(quality_counts.get(3, 0))
+                total_passes_with_quality = len(pass_qualities)
+            else:
+                perfect_passes = good_passes = poor_passes = total_passes_with_quality = 0
         else:
             perfect_passes = 0
             good_passes = 0
@@ -230,7 +290,11 @@ class MatchAnalyzer:
         
         # Reception Efficiency: (Good Passes - Errors) / Total Reception Attempts
         # Good passes = perfect + good (both count as good)
-        reception_errors = len(receive_actions[receive_actions['outcome'] == 'error'])
+        if receive_actions is not None and len(receive_actions) > 0:
+            outcome_counts_rec = receive_actions['outcome'].value_counts()
+            reception_errors = outcome_counts_rec.get('error', 0)
+        else:
+            reception_errors = 0
         reception_efficiency = (good_receives - reception_errors) / total_receives if total_receives > 0 else 0
         
         # Error Rates (by action type)
@@ -238,7 +302,7 @@ class MatchAnalyzer:
         attack_error_rate = attack_errors / attack_attempts if attack_attempts > 0 else 0
         service_error_rate = service_errors / service_attempts if service_attempts > 0 else 0
         block_error_rate = block_errors / block_attempts if block_attempts > 0 else 0
-        reception_error_rate = len(receive_actions[receive_actions['outcome'] == 'error']) / total_receives if total_receives > 0 else 0
+        reception_error_rate = reception_errors / total_receives if total_receives > 0 else 0
         total_error_rate = len(df[df['outcome'] == 'error']) / total_actions if total_actions > 0 else 0
         
         # Ace-to-Error Ratio: Service Aces / Service Errors
@@ -280,6 +344,9 @@ class MatchAnalyzer:
             'ace_to_error_ratio': ace_to_error_ratio
         }
         
+        # Cache the results
+        self._metrics_cache = self.team_stats
+        
         return self.team_stats
     
     def calculate_player_metrics(self):
@@ -288,7 +355,7 @@ class MatchAnalyzer:
             return None
         
         df = self.match_data
-        players = df['player'].unique()
+        players = [p for p in df['player'].unique() if str(p).upper() != 'OUR_TEAM']
         
         player_metrics = {}
         

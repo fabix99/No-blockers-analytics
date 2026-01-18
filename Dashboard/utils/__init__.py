@@ -11,9 +11,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# File upload limits
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-ALLOWED_EXTENSIONS = ['.xlsx', '.xls']
+# Import file upload limits from config to avoid duplication
+from config import MAX_FILE_SIZE, ALLOWED_EXTENSIONS
 ALLOWED_MIME_TYPES = [
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-excel'
@@ -152,7 +151,8 @@ from .formatters import (
 # Import helpers for convenience
 from .helpers import (
     get_player_position,
-    calculate_total_points_from_loader
+    calculate_total_points_from_loader,
+    extract_date_from_filename
 )
 
 __all__ = [
@@ -166,6 +166,7 @@ __all__ = [
     'get_performance_delta_color',
     'get_player_position',
     'calculate_total_points_from_loader',
+    'extract_date_from_filename',
     'MAX_FILE_SIZE',
     'ALLOWED_EXTENSIONS',
     'ALLOWED_MIME_TYPES',

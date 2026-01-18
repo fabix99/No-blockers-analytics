@@ -32,12 +32,13 @@ def create_reception_performance_charts(df: pd.DataFrame, loader=None) -> None:
     st.markdown("#### Reception Quality by Set")
     played_sets = get_played_sets(df, loader)
     
-    # Fixed order for consistent legend: Good, Average, Poor
-    reception_order = ['Good', 'Average', 'Poor']
+    # Fixed order for consistent legend: Perfect, Good, Poor, Error
+    reception_order = ['Perfect', 'Good', 'Poor', 'Error']
     reception_color_map = {
+        'Perfect': OUTCOME_COLORS.get('perfect', '#28A745'),
         'Good': OUTCOME_COLORS['good'],
-        'Average': OUTCOME_COLORS.get('average', '#FFC107'),
-        'Poor': OUTCOME_COLORS['error']
+        'Poor': OUTCOME_COLORS.get('poor', '#FFC107'),
+        'Error': OUTCOME_COLORS['error']
     }
     
     # Create set selector
@@ -55,17 +56,18 @@ def create_reception_performance_charts(df: pd.DataFrame, loader=None) -> None:
         title = f"Set {set_num}"
         key_suffix = f"set_{set_num}"
     
-    # Calculate reception data
+    # Calculate reception data - separate all categories
     receptions = filtered_df[filtered_df['action'] == 'receive']
-    good = len(receptions[receptions['outcome'].isin(['good', 'perfect'])])
-    average = len(receptions[receptions['outcome'].isin(['average', 'ok'])])
-    poor = len(receptions[receptions['outcome'].isin(['poor', 'error', 'ace'])])
-    total = good + average + poor
+    perfect = len(receptions[receptions['outcome'] == 'perfect'])
+    good = len(receptions[receptions['outcome'] == 'good'])
+    poor = len(receptions[receptions['outcome'] == 'poor'])
+    error = len(receptions[receptions['outcome'].isin(['error', 'ace'])])
+    total = perfect + good + poor + error
     
     # Display the chart
     if total > 0:
         _create_reception_donut_chart(
-            {'Good': good, 'Average': average, 'Poor': poor},
+            {'Perfect': perfect, 'Good': good, 'Poor': poor, 'Error': error},
             reception_order, reception_color_map, title, total, 
             f"reception_donut_{key_suffix}"
         )

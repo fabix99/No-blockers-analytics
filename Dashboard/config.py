@@ -82,20 +82,32 @@ SETTER_THRESHOLD: float = 0.2  # Setter if sets >= 20% of total actions
 
 # KPI Target Ranges - Updated for new metrics
 KPI_TARGETS: Dict[str, Dict[str, float]] = {
-    'break_point_rate': {'min': 0.50, 'max': 0.60, 'optimal': 0.55},
-    'side_out_percentage': {'min': 0.65, 'max': 0.75, 'optimal': 0.70},
-    'kill_percentage': {'min': 0.35, 'max': 0.50, 'optimal': 0.42},
-    'block_kill_percentage': {'min': 0.05, 'max': 0.15, 'optimal': 0.10},
-    'reception_quality': {'min': 0.70, 'max': 0.85, 'optimal': 0.75},
+    # Scoring Section
+    'break_point_rate': {'min': 0.50, 'max': 0.60, 'optimal': 0.55},  # Serving Point Rate
+    'side_out_percentage': {'min': 0.45, 'max': 0.55, 'optimal': 0.50},  # Receiving Point Rate
+    'points_in_lead': {'min': 0.40, 'max': 0.60, 'optimal': 0.50},  # % Points in Lead (momentum)
+    
+    # Service Section
     'serve_in_rate': {'min': 0.85, 'max': 0.95, 'optimal': 0.90},
-    'dig_rate': {'min': 0.65, 'max': 0.80, 'optimal': 0.70},
-    # New enhanced metrics (MEDIUM PRIORITY 26-28)
+    'service_error_rate': {'min': 0.05, 'max': 0.20, 'optimal': 0.10},  # Max 20%, optimal 10%
+    'ace_rate': {'min': 0.05, 'max': 0.15, 'optimal': 0.10},
+    
+    # Defense & Transition Section
+    'reception_quality': {'min': 0.75, 'max': 0.85, 'optimal': 0.80},  # Includes good and perfect
+    'dig_rate': {'min': 0.75, 'max': 0.85, 'optimal': 0.80},  # Includes perfects
+    'reception_error_rate': {'min': 0.05, 'max': 0.20, 'optimal': 0.10},  # Max 20%, optimal 10%
+    
+    # Attack and Net Performance Section
+    'kill_percentage': {'min': 0.45, 'max': 0.55, 'optimal': 0.50},  # Attack Kill %
+    'attack_error_rate': {'min': 0.05, 'max': 0.20, 'optimal': 0.10},  # Max 20%, optimal 10%
+    'block_percentage': {'min': 0.28, 'max': 0.38, 'optimal': 0.33},  # Block kill + block no kill / total
+    
+    # Legacy metrics (kept for compatibility)
+    'block_kill_percentage': {'min': 0.05, 'max': 0.15, 'optimal': 0.10},
     'attack_efficiency': {'min': 0.25, 'max': 0.35, 'optimal': 0.30},
     'block_touch_rate': {'min': 0.15, 'max': 0.30, 'optimal': 0.20},
-    'ace_rate': {'min': 0.05, 'max': 0.15, 'optimal': 0.10},
     'ace_to_error_ratio': {'min': 0.5, 'max': 1.5, 'optimal': 1.0},
     'avg_actions_per_point': {'min': 2.5, 'max': 3.5, 'optimal': 3.0},
-    # Legacy metrics (kept for compatibility)
     'service_efficiency': {'min': 0.10, 'max': 0.20, 'optimal': 0.15},
     'block_efficiency': {'min': 0.05, 'max': 0.15, 'optimal': 0.10},
     'reception_percentage': {'min': 0.60, 'max': 0.80, 'optimal': 0.75}

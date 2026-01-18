@@ -70,7 +70,7 @@ BEAUTIFUL_TEMPLATE = {
 }
 
 plotly_config = {
-    'displayModeBar': True,
+    'displayModeBar': False,  # Hide toolbar (zoom, pan, etc.) on all graphs
     'displaylogo': False,
     'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
     'toImageButtonOptions': {

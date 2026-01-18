@@ -3,6 +3,27 @@ Helper utility functions for data processing and player information
 """
 from typing import Optional, List
 import pandas as pd
+import re
+from datetime import datetime
+
+
+def get_player_df(df: pd.DataFrame, player_name: str) -> pd.DataFrame:
+    """Get player dataframe with case-insensitive, whitespace-tolerant matching.
+    
+    Args:
+        df: Match dataframe with player column
+        player_name: Name of the player to match
+        
+    Returns:
+        DataFrame filtered to player's rows
+    """
+    if df is None or df.empty or 'player' not in df.columns:
+        return pd.DataFrame()
+    
+    player_name_normalized = player_name.strip().lower()
+    # Match case-insensitively and handle whitespace (fillna to handle None/NaN)
+    player_col_normalized = df['player'].fillna('').astype(str).str.strip().str.lower()
+    return df[player_col_normalized == player_name_normalized]
 
 
 def get_player_position(df: pd.DataFrame, player_name: str) -> Optional[str]:
@@ -15,7 +36,7 @@ def get_player_position(df: pd.DataFrame, player_name: str) -> Optional[str]:
     Returns:
         Primary position string (e.g., 'OH1', 'MB1', 'OPP') or None if not found
     """
-    player_data = df[df['player'] == player_name]
+    player_data = get_player_df(df, player_name)
     if 'position' in player_data.columns and len(player_data) > 0:
         # Get the most common position for this player
         position_counts = player_data['position'].value_counts()
@@ -45,6 +66,23 @@ def calculate_total_points_from_loader(loader) -> float:
     return total_points
 
 
+def _is_good_outcome_base(action: str, outcome: str) -> bool:
+    """Base function to check if an outcome is 'good' for a given action.
+    
+    Args:
+        action: Action type (receive, dig, block)
+        outcome: Outcome string
+        
+    Returns:
+        True if outcome is considered good for the action
+    """
+    if action == 'block':
+        return outcome == 'touch'
+    elif action in ['receive', 'dig']:
+        return outcome in ['perfect', 'good']
+    return False
+
+
 def is_good_reception(outcome: str) -> bool:
     """Check if a reception outcome is considered 'good' (perfect or good).
     
@@ -54,7 +92,7 @@ def is_good_reception(outcome: str) -> bool:
     Returns:
         True if outcome is perfect or good
     """
-    return outcome in ['perfect', 'good']
+    return _is_good_outcome_base('receive', outcome)
 
 
 def is_good_dig(outcome: str) -> bool:
@@ -66,7 +104,7 @@ def is_good_dig(outcome: str) -> bool:
     Returns:
         True if outcome is perfect or good
     """
-    return outcome in ['perfect', 'good']
+    return _is_good_outcome_base('dig', outcome)
 
 
 def is_good_block(outcome: str) -> bool:
@@ -78,11 +116,14 @@ def is_good_block(outcome: str) -> bool:
     Returns:
         True if outcome is touch (block touch creates opportunity)
     """
-    return outcome == 'touch'
+    return _is_good_outcome_base('block', outcome)
 
 
 def is_good_reception_or_dig(outcome: str) -> bool:
     """Check if a reception or dig outcome is considered 'good'.
+    
+    DEPRECATED: Use is_good_reception() or is_good_dig() instead.
+    Kept for backward compatibility.
     
     Args:
         outcome: Outcome string
@@ -206,4 +247,22 @@ def count_good_outcomes(df: pd.DataFrame, action: str) -> int:
         return len(action_df[action_df['outcome'] == 'defended'])
     
     return 0
+
+
+def extract_date_from_filename(filename: str) -> Optional[datetime.date]:
+    """Extract date from filename (expects format with YYYY-MM-DD pattern).
+    
+    Args:
+        filename: Filename string
+        
+    Returns:
+        Date object or None if not found
+    """
+    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
+    if date_match:
+        try:
+            return datetime.strptime(date_match.group(1), '%Y-%m-%d').date()
+        except (ValueError, AttributeError):
+            pass
+    return None
 

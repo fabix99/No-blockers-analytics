@@ -1405,10 +1405,9 @@ def _create_set_by_set_charts(df: pd.DataFrame, analyzer: MatchAnalyzer, loader=
         barmode='stack',
         xaxis=dict(dtick=1, tickfont=dict(color='#050d76')),
         yaxis=dict(tickfont=dict(color='#050d76')),
-        height=CHART_HEIGHTS['medium'],
         legend=dict(orientation="v", yanchor="top", y=1, xanchor="right", x=1.02)
     )
-    fig_reception = apply_beautiful_theme(fig_reception, "Reception Quality Distribution")
+    fig_reception = apply_beautiful_theme(fig_reception, "Reception Quality Distribution", height=CHART_HEIGHTS['medium'])
     st.plotly_chart(fig_reception, use_container_width=True, config=plotly_config, key="reception_quality_set")
 
 
@@ -1667,6 +1666,21 @@ def _create_point_by_point_progression_chart(df: pd.DataFrame, loader=None) -> N
                     'final_opp': final_opp
                 })
         
+        # Add shared legend above all charts (only once)
+        st.markdown("""
+        <div style="display: flex; justify-content: center; align-items: center; 
+                    gap: 20px; margin: 0 0 5px 0; padding: 0;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 12px; height: 12px; background-color: #040C7B; border-radius: 50%;"></div>
+                <span style="font-size: 13px; color: #050d76; font-weight: 500;">Us</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 12px; height: 12px; background-color: #E63946; border-radius: 2px;"></div>
+                <span style="font-size: 13px; color: #050d76; font-weight: 500;">Opponent</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
         # Display charts in rows
         for row_idx, row_sets in enumerate(rows):
             if row_idx > 0:
@@ -1681,18 +1695,21 @@ def _create_point_by_point_progression_chart(df: pd.DataFrame, loader=None) -> N
                     continue
                 
                 with row_cols[col_idx if len(row_sets) <= 3 else col_idx % 3]:
+                    # Wrap in container to shift left
+                    st.markdown('<div style="margin-left: -15px;">', unsafe_allow_html=True)
+                    
                     # Calculate set outcome
                     set_outcome = "Won" if chart_info['final_our'] > chart_info['final_opp'] else "Lost"
                     outcome_color = "#28A745" if chart_info['final_our'] > chart_info['final_opp'] else "#DC3545"
                     
-                    # Show set header
+                    # Show set header with larger score
                     st.markdown(f"""
                     <div style="display: flex; justify-content: space-between; align-items: center; 
                                 padding: 8px 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px;">
                         <span style="font-size: 16px; font-weight: 700; color: #040C7B;">
                             Set {set_num}
                         </span>
-                        <span style="font-size: 14px; color: {outcome_color}; font-weight: 600;">
+                        <span style="font-size: 20px; color: {outcome_color}; font-weight: 700;">
                             {chart_info['final_our']}-{chart_info['final_opp']}
                         </span>
                     </div>
@@ -1708,7 +1725,8 @@ def _create_point_by_point_progression_chart(df: pd.DataFrame, loader=None) -> N
                         name='Us',
                         line=dict(color=BRAND_BLUE, width=2.5),
                         marker=dict(size=4, color=BRAND_BLUE),
-                        hovertemplate='<b>Us</b><br>Rally %{x}<br>Score: %{y}<extra></extra>'
+                        hovertemplate='<b>Us</b><br>Rally %{x}<br>Score: %{y}<extra></extra>',
+                        showlegend=False
                     ))
                     
                     # Add opponent score trace (continuous line)
@@ -1719,29 +1737,30 @@ def _create_point_by_point_progression_chart(df: pd.DataFrame, loader=None) -> N
                         name='Opponent',
                         line=dict(color=OPPONENT_COLOR, width=2.5),
                         marker=dict(size=4, color=OPPONENT_COLOR, symbol='square'),
-                        hovertemplate='<b>Opponent</b><br>Rally %{x}<br>Score: %{y}<extra></extra>'
+                        hovertemplate='<b>Opponent</b><br>Rally %{x}<br>Score: %{y}<extra></extra>',
+                        showlegend=False
                     ))
                     
                     fig.update_layout(
                         xaxis_title="Rally",
                         yaxis_title="Score",
                         height=350,
-                        legend=dict(
-                            orientation="h",
-                            yanchor="bottom",
-                            y=-0.25,
-                            xanchor="center",
-                            x=0.5,
-                            font=dict(size=11)
-                        ),
+                        showlegend=False,
                         hovermode='x unified',
-                        margin=dict(l=40, r=30, t=10, b=55),
+                        margin=dict(l=30, r=15, t=10, b=20),
                         xaxis=dict(tickfont=dict(color='#050d76', size=10)),
                         yaxis=dict(tickfont=dict(color='#050d76', size=10))
                     )
                     fig = apply_beautiful_theme(fig)
-                    st.plotly_chart(fig, use_container_width=True, config=plotly_config, 
+                    # Override margins after theme to ensure they fit in narrow columns
+                    fig.update_layout(margin=dict(l=30, r=15, t=10, b=20), autosize=True)
+                    # Create custom config with responsive sizing
+                    responsive_config = {**plotly_config, 'responsive': True}
+                    st.plotly_chart(fig, use_container_width=True, config=responsive_config, 
                                    key=f"score_progression_set_{set_num}")
+                    
+                    # Close wrapper div
+                    st.markdown('</div>', unsafe_allow_html=True)
         
     except Exception as e:
         st.info(f"Score progression chart not available: {str(e)}")
@@ -1899,15 +1918,23 @@ def _create_rotation_heatmap(rotation_stats: Dict[int, Dict[str, float]],
         has_serving_data = serving_rallies_total > 0
         has_receiving_data = receiving_rallies_total > 0
         
-        serving_point_rate = (serving_points_won_total / serving_rallies_total) if has_serving_data else None
-        receiving_point_rate = (receiving_points_won_total / receiving_rallies_total) if has_receiving_data else None
+        # Use centralized calculation methods
+        from services.kpi_calculator import KPICalculator
+        serving_point_rate = KPICalculator.calculate_break_point_rate_from_totals(
+            int(serving_points_won_total), int(serving_rallies_total)
+        ) if has_serving_data else None
+        receiving_point_rate = KPICalculator.calculate_side_out_efficiency_from_totals(
+            int(receiving_points_won_total), int(receiving_rallies_total)
+        ) if has_receiving_data else None
         
         # Kill Percentage: Attack kills / total attacks (from filtered dataframe)
         attacks = rotation_data[rotation_data['action'] == 'attack']
         attack_kills = len(attacks[attacks['outcome'] == 'kill'])
         attack_attempts = len(attacks)
         has_attack_data = attack_attempts > 0
-        kill_percentage = (attack_kills / attack_attempts) if has_attack_data else None
+        kill_percentage = KPICalculator.calculate_attack_kill_pct_from_totals(
+            attack_kills, attack_attempts
+        ) if has_attack_data else None
         
         # Reception Quality: Use aggregated reception data from Excel sheets (more accurate)
         # The Excel sheets have Reception_Good and Reception_Total columns per rotation
@@ -2037,17 +2064,139 @@ def _create_rotation_heatmap(rotation_stats: Dict[int, Dict[str, float]],
         if len(heatmap_data[row_idx]) > 4:
             heatmap_data[row_idx][4] = float('nan')  # Usage Frequency - no color coding
     
-    # Create heatmap with improved color scale
-    # Use a custom colorscale that handles NaN values (they'll appear as white/gray)
-    # Reverted to softer pastel gradient
+    # Helper function to get players in a rotation
+    def get_players_in_rotation(rotation: int, loader, set_num: Optional[int] = None) -> str:
+        """Get players in a rotation based on starting formation.
+        
+        Rotation 1 mapping (standard):
+        - Position 1: Setter (S)
+        - Position 2: Outside Hitter 1 (OH1)
+        - Position 3: Middle Blocker 1 (MB1)
+        - Position 4: Opposite (OPP)
+        - Position 5: Outside Hitter 2 (OH2)
+        - Position 6: Middle Blocker 2 (MB2)
+        
+        As rotation changes, players rotate counter-clockwise.
+        Libero replaces MB in back row (positions 1, 5, 6).
+        """
+        if loader is None or not hasattr(loader, 'player_data_by_set'):
+            return "N/A"
+        
+        # Get starting formation from first set or specified set
+        sets_to_check = [set_num] if set_num else list(loader.player_data_by_set.keys())
+        if not sets_to_check:
+            return "N/A"
+        
+        first_set = sets_to_check[0]
+        if first_set not in loader.player_data_by_set:
+            return "N/A"
+        
+        # Build position to player mapping from player_data_by_set
+        # Position codes: S, OH1, OH2, MB1, MB2, OPP, L
+        position_to_player = {}
+        libero_name = None
+        
+        for player_name, player_info in loader.player_data_by_set[first_set].items():
+            position = player_info.get('position', '')
+            if position == 'L':
+                libero_name = player_name
+            else:
+                position_to_player[position] = player_name
+        
+        # Rotation 1 mapping (standard starting formation)
+        rotation_1_mapping = {
+            1: 'S',    # Setter
+            2: 'OH1',  # Outside Hitter 1
+            3: 'MB1',  # Middle Blocker 1
+            4: 'OPP',  # Opposite
+            5: 'OH2',  # Outside Hitter 2
+            6: 'MB2',  # Middle Blocker 2
+        }
+        
+        # Calculate which positions are in each court position for this rotation
+        # Rotation number = setter's position
+        # Players rotate counter-clockwise as rotation increases
+        players_on_court = []
+        
+        for court_pos in range(1, 7):
+            # Calculate offset from rotation 1
+            # Rotation 1: setter at pos 1, offset = 0
+            # Rotation 2: setter at pos 2, offset = 1 (one CCW)
+            # Rotation 6: setter at pos 6, offset = 5 (five CCW)
+            offset = (rotation - 1) % 6
+            
+            # Calculate which base position is at this court position
+            # Formula: base_pos = ((court_pos - 1 - offset + 6) % 6) + 1
+            base_pos = ((court_pos - rotation + 6) % 6) + 1
+            position_code = rotation_1_mapping.get(base_pos)
+            
+            if position_code:
+                # Check if this is a back row position where libero might play
+                is_back_row = court_pos in [1, 5, 6]
+                is_serving_pos = court_pos == 1
+                
+                # Libero replaces MB in back row (except when serving at pos 1)
+                if (position_code in ['MB1', 'MB2'] and is_back_row and 
+                    libero_name and not is_serving_pos):
+                    player_name = libero_name
+                else:
+                    player_name = position_to_player.get(position_code, '')
+                
+                if player_name:
+                    # Format: "Pos X: Player Name"
+                    pos_label = f"Pos {court_pos}"
+                    players_on_court.append(f"{pos_label}: {player_name}")
+        
+        if players_on_court:
+            return "<br>".join(players_on_court)
+        return "N/A"
+    
+    # Build hover templates with player information (no court visualization in hover)
+    # Create a mapping of rotation to players for hover display
+    rotation_players_map = {}
+    for rotation in rotations:
+        players_info = get_players_in_rotation(rotation, loader, selected_set_num)
+        rotation_players_map[rotation] = players_info
+    
+    # Build custom hover data - 2D array of formatted strings matching heatmap dimensions
+    hover_customdata = []
+    for rot_idx, rotation in enumerate(rotations):
+        row_data = []
+        players_info = rotation_players_map.get(rotation, "N/A")
+        for metric_idx, metric_label in enumerate(metric_labels):
+            if metric_idx < len(heatmap_text[rot_idx]):
+                value_text = heatmap_text[rot_idx][metric_idx]
+                # Format hover text with player information (simple text only)
+                hover_text = f'<b>Rotation {rotation}</b><br>{metric_label}: {value_text}'
+                if players_info != "N/A":
+                    hover_text += f'<br><br><b>Players:</b><br>{players_info}'
+                hover_text += '<extra></extra>'
+                row_data.append(hover_text)
+            else:
+                row_data.append('')
+        hover_customdata.append(row_data)
+    
+    # Create heatmap with improved color scale (diverging: red → white → green centered on targets)
+    # Target-based colorscale: 
+    # - Below 50%: Red shades
+    # - Around 50%: White/light
+    # - Above 50%: Green shades
     fig_heatmap = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=metric_labels,
         y=[f"Rotation {r}" for r in rotations],
-        colorscale=[[0, '#FFB3BA'], [0.4, '#FFDFBA'], [0.6, '#FFFFBA'], [0.8, '#BAFFC9'], [1, '#90EE90']],  # Softer pastel gradient ending in soft green
+        colorscale=[
+            [0.0, '#DC3545'],    # Red (0%)
+            [0.3, '#FF6B6B'],    # Light red (30%)
+            [0.45, '#FFE66D'],   # Yellow (45%)
+            [0.5, '#FFFFFF'],    # White (50% - target center)
+            [0.55, '#C8E6C9'],   # Light green (55%)
+            [0.7, '#81C784'],    # Green (70%)
+            [1.0, '#4CAF50']     # Dark green (100%)
+        ],
         text=heatmap_text,
         texttemplate="%{text}",
-        textfont={"size": 11, "color": "#2C3E50"},
+        textfont={"size": 14, "color": "#2C3E50", "family": "Arial, sans-serif"},
         colorbar=dict(
             title="Performance Rate (%)",
             tickmode='linear',
@@ -2055,11 +2204,15 @@ def _create_rotation_heatmap(rotation_stats: Dict[int, Dict[str, float]],
             dtick=20,
             tickformat='.0f'
         ),
-        hovertemplate='<b>%{y}</b><br>%{x}: %{text}<extra></extra>',
+        hovertemplate='%{customdata}',
+        customdata=hover_customdata,
         showscale=True,
         zmin=0,   # Minimum value (0%)
         zmax=100, # Maximum value (100%)
-        zmid=50   # Center the color scale at 50%
+        zmid=50,  # Center the color scale at 50% (target)
+        # Add borders for cell separation
+        xgap=2,
+        ygap=2
     ))
     
     # Update title based on filter
@@ -2067,22 +2220,502 @@ def _create_rotation_heatmap(rotation_stats: Dict[int, Dict[str, float]],
     if selected_set_num is not None:
         heatmap_title += f" - Set {selected_set_num}"
     
+    # Calculate height to roughly match court visualization (350px) + buttons + title
+    # Court visualization is ~350px, buttons + title ~100px, total ~450px
+    # Adjust heatmap to be similar height
+    target_height = 450  # Match court visualization area
+    heatmap_height = max(target_height, len(rotations) * 60)  # Minimum per rotation but cap if too tall
+    
     fig_heatmap.update_layout(
         title=heatmap_title,
         xaxis_title="Metric",
         yaxis_title="Rotation",
-        height=CHART_HEIGHTS['medium'],
+        height=heatmap_height,
         font=dict(family='Inter, sans-serif', size=12, color='#050d76'),
         paper_bgcolor='rgba(255,255,255,0)',
         plot_bgcolor='rgba(255,255,255,0.95)',
-        xaxis=dict(tickfont=dict(color='#050d76')),
-        yaxis=dict(tickfont=dict(color='#050d76'))
+        xaxis=dict(tickfont=dict(color='#050d76', size=13)),
+        yaxis=dict(tickfont=dict(color='#050d76', size=13)),
+        # Increase margins for better spacing
+        margin=dict(l=80, r=120, t=60, b=60)
     )
     
     fig_heatmap = apply_beautiful_theme(fig_heatmap, heatmap_title)
-    st.plotly_chart(fig_heatmap, use_container_width=True, config=plotly_config, key=f"rotation_heatmap_{selected_set_num if selected_set_num else 'all'}")
+    
+    # Initialize session state for selected rotation (before columns)
+    rotation_key = f"selected_rotation_{selected_set_num if selected_set_num else 'all'}"
+    if rotation_key not in st.session_state:
+        st.session_state[rotation_key] = rotations[0] if rotations else 1
+    
+    selected_rotation = st.session_state[rotation_key]
+    
+    # CSS for beautiful radio buttons and perfectly aligned columns
+    st.markdown("""
+    <style>
+    /* Remove gap between "Select Rotation:" text and radio buttons */
+    div[data-testid="stMarkdownContainer"]:has(+ div[data-testid="stRadio"]) {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    div[data-testid="stMarkdownContainer"]:has(+ div[data-testid="stRadio"]) p {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
+    }
+    /* Remove spacing from radio button container and its wrappers */
+    div[data-testid="stRadio"],
+    div[data-testid="stRadio"] .element-container,
+    div[data-testid="stRadio"] .row-widget {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    /* AGGRESSIVELY hide the label wrapper that creates the empty box - target everything */
+    div[data-testid="stRadio"] > div:first-child,
+    div[data-testid="stRadio"] > div:first-of-type,
+    div[data-testid="stRadio"] .element-container > div:first-child,
+    div[data-testid="stRadio"] .element-container > div:first-of-type,
+    div[data-testid="stRadio"] .row-widget > div:first-child:not(:has(input[type="radio"])),
+    div[data-testid="stRadio"] .row-widget > div:first-of-type:not(:has(input[type="radio"])),
+    div[data-testid="stRadio"] .stRadio > div:first-child:not(:has(input)),
+    /* Hide any div that only contains labels (not radio inputs) */
+    div[data-testid="stRadio"] > div:has(> label:not(:has(input))),
+    div[data-testid="stRadio"] .element-container > div:has(> label:not(:has(input))) {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+    /* Hide empty collapsed label FIRST - only target empty labels, not the actual radio buttons */
+    div[data-testid="stRadio"] > div:first-child label,
+    div[data-testid="stRadio"] .element-container > div:first-child label,
+    div[data-testid="stRadio"] .row-widget > div:first-child label,
+    div[data-testid="stRadio"] label:empty,
+    div[data-testid="stRadio"] [data-baseweb="typo-label"]:empty {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        line-height: 0 !important;
+        font-size: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    /* Hide wrapper divs that contain collapsed labels - more aggressive targeting */
+    div[data-testid="stRadio"] > div:has(> label:empty),
+    div[data-testid="stRadio"] > div:has(> label[data-baseweb="typo-label"]:empty),
+    div[data-testid="stRadio"] .element-container > div:first-child:has(label:empty),
+    div[data-testid="stRadio"] .element-container > div:first-child:has(label[data-baseweb="typo-label"]:empty),
+    div[data-testid="stRadio"] .row-widget > div:first-child:has(label:empty),
+    div[data-testid="stRadio"] .stRadio > div:first-child:not(:has(input)),
+    div[data-testid="stRadio"] .stRadio > div:first-child:has(label:empty) {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
+    /* Target any first-child elements that might be empty containers */
+    div[data-testid="stRadio"] .element-container > div:first-child,
+    div[data-testid="stRadio"] .row-widget > div:first-child {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    /* If first child only contains empty/hidden label, hide the whole container */
+    div[data-testid="stRadio"] .element-container > div:first-child:has(> label:empty):only-child {
+        display: none !important;
+        height: 0 !important;
+    }
+    /* Radio button labels - ONLY style labels that are siblings of radio inputs (not the empty collapsed label) */
+    div[data-testid="stRadio"] input[type="radio"] + label,
+    div[data-testid="stRadio"] label:has(+ input[type="radio"]),
+    div[data-testid="stRadio"] .row-widget label:has(~ input),
+    div[data-testid="stRadio"] .stRadio label:has(~ input[type="radio"]) {
+        margin: 0 !important;
+        padding: 0.5rem 1rem !important;
+        font-size: 0.9rem !important;
+        min-height: 2.2rem !important;
+        height: auto !important;
+        line-height: 1.2 !important;
+        border: 2px solid #e5e7eb !important;
+        background: linear-gradient(to bottom, #ffffff, #f9fafb) !important;
+        border-radius: 10px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        cursor: pointer !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        font-weight: 600 !important;
+        color: #374151 !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+        min-width: 2.8rem !important;
+    }
+    div[data-testid="stRadio"] label:hover {
+        border-color: #050d76 !important;
+        background: linear-gradient(to bottom, #ffffff, #f3f4f6) !important;
+        box-shadow: 0 4px 8px rgba(5, 13, 118, 0.15) !important;
+        transform: translateY(-2px) scale(1.02) !important;
+    }
+    div[data-testid="stRadio"] input[type="radio"]:checked + label {
+        border: 2.5px solid #050d76 !important;
+        color: #050d76 !important;
+        font-weight: 700 !important;
+        background: linear-gradient(to bottom, #eff6ff, #dbeafe) !important;
+        box-shadow: 0 4px 12px rgba(5, 13, 118, 0.3) !important;
+        transform: translateY(-2px) scale(1.05) !important;
+    }
+    /* Hide radio button circles completely */
+    div[data-testid="stRadio"] input[type="radio"] {
+        position: absolute !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    /* Column alignment - simplified */
+    div[data-testid="column"]:first-child {
+        align-items: flex-start !important;
+    }
+    /* Center court visualization - simplified approach */
+    div[data-testid="column"]:nth-child(2) {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+    }
+    /* Let Plotly handle its own sizing, just ensure it's centered */
+    div[data-testid="column"]:nth-child(2) .js-plotly-plot {
+        margin: 0 auto !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+    }
+    /* Center the SVG container within the plotly plot */
+    div[data-testid="column"]:nth-child(2) .js-plotly-plot > div.plot-container {
+        margin: 0 auto !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        width: 100% !important;
+    }
+    div[data-testid="column"]:nth-child(2) .svg-container {
+        margin: 0 auto !important;
+        position: relative !important;
+        left: 0 !important;
+        transform: translateX(0) !important;
+        text-align: left !important;
+    }
+    /* Shift the entire plotly chart container slightly left to center it */
+    div[data-testid="column"]:nth-child(2) div[data-testid="stPlotlyChart"] {
+        margin-left: -15px !important;
+        padding-left: 0 !important;
+    }
+    /* Ensure plot container uses full width and centers content */
+    div[data-testid="column"]:nth-child(2) .plot-container {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Rotation selector above both columns - using compact radio buttons
+    st.markdown("**Select Rotation:**")
+    
+    # Use horizontal radio buttons styled as compact buttons
+    # Filter to only show available rotations, or show all if needed
+    rotation_options = [str(r) for r in range(1, 7)]
+    # Find the index of the selected rotation in the options
+    try:
+        selected_index = rotation_options.index(str(selected_rotation))
+    except ValueError:
+        selected_index = 0
+    
+    selected = st.radio(
+        "",
+        options=rotation_options,
+        index=selected_index,
+        key=f"rotation_radio_{selected_set_num if selected_set_num else 'all'}",
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+    
+    if selected and int(selected) != selected_rotation:
+        st.session_state[rotation_key] = int(selected)
+        st.rerun()
+    
+    # Create two columns: heatmap on left, court visualization on right
+    col_heatmap, col_right = st.columns([2, 1])
+    
+    with col_heatmap:
+        st.plotly_chart(fig_heatmap, use_container_width=True, config=plotly_config, key=f"rotation_heatmap_{selected_set_num if selected_set_num else 'all'}")
+    
+    with col_right:
+        # Render court visualization for selected rotation with matching height
+        # The CSS above handles centering and alignment
+        selected_rotation_for_court = st.session_state[rotation_key]
+        if selected_rotation_for_court in rotations:
+            _render_rotation_court(selected_rotation_for_court, loader, selected_set_num, height=heatmap_height)
+        else:
+            st.info("Select a rotation to view court layout")
     
     # Rotation Usage Frequency removed - now integrated into heatmap above
+
+
+def _render_rotation_court(rotation: int, loader, set_num: Optional[int] = None, height: Optional[int] = None) -> None:
+    """Render a small volleyball court visualization for a specific rotation.
+    
+    Args:
+        rotation: Rotation number to visualize
+        loader: EventTrackerLoader instance
+        set_num: Optional set number to filter by
+        height: Optional height to match with heatmap
+    """
+    if loader is None or not hasattr(loader, 'player_data_by_set'):
+        st.info("Court visualization not available")
+        return
+    
+    # Get starting formation from first set or specified set
+    sets_to_check = [set_num] if set_num else list(loader.player_data_by_set.keys())
+    if not sets_to_check:
+        st.info("No set data available")
+        return
+    
+    first_set = sets_to_check[0]
+    if first_set not in loader.player_data_by_set:
+        st.info("No set data available")
+        return
+    
+    # Build position to player mapping
+    position_to_player = {}
+    libero_name = None
+    
+    for player_name, player_info in loader.player_data_by_set[first_set].items():
+        position = player_info.get('position', '')
+        if position == 'L':
+            libero_name = player_name
+        else:
+            position_to_player[position] = player_name
+    
+    # Rotation 1 mapping (standard starting formation)
+    rotation_1_mapping = {
+        1: 'S',    # Setter
+        2: 'OH1',  # Outside Hitter 1
+        3: 'MB1',  # Middle Blocker 1
+        4: 'OPP',  # Opposite
+        5: 'OH2',  # Outside Hitter 2
+        6: 'MB2',  # Middle Blocker 2
+    }
+    
+    # Create Plotly figure
+    fig = go.Figure()
+    
+    # Court dimensions for trapezoid (half court view from behind)
+    court_top_width = 9  # Width at net (shorter)
+    court_bottom_width = 12  # Width at back line (wider)
+    court_depth = 9  # Depth of court
+    
+    # Center coordinates
+    center_x = 0
+    court_top_y = court_depth  # Top of court (net line)
+    court_bottom_y = 0  # Bottom of court (back line)
+    
+    # Trapezoid vertices (counter-clockwise from top-left)
+    trapezoid_x = [
+        center_x - court_top_width / 2,  # Top left
+        center_x + court_top_width / 2,  # Top right
+        center_x + court_bottom_width / 2,  # Bottom right
+        center_x - court_bottom_width / 2,  # Bottom left
+        center_x - court_top_width / 2  # Close the shape
+    ]
+    trapezoid_y = [
+        court_top_y,  # Top left
+        court_top_y,  # Top right
+        court_bottom_y,  # Bottom right
+        court_bottom_y,  # Bottom left
+        court_top_y  # Close the shape
+    ]
+    
+    # Draw trapezoid court background
+    fig.add_trace(go.Scatter(
+        x=trapezoid_x,
+        y=trapezoid_y,
+        fill='toself',
+        fillcolor='rgba(219, 231, 255, 0.5)',  # Light blue background
+        line=dict(color='#050d76', width=2),
+        mode='lines',
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+    
+    # Net line at top
+    fig.add_shape(
+        type="line",
+        x0=center_x - court_top_width / 2,
+        y0=court_top_y,
+        x1=center_x + court_top_width / 2,
+        y1=court_top_y,
+        line=dict(color='#050d76', width=2, dash="dash"),
+        layer="below"
+    )
+    
+    # Position coordinates on trapezoidal court
+    # Positions arranged: 4-3-2 (front), 5-6-1 (back)
+    position_coords = {
+        1: {'x': center_x + court_bottom_width / 2 - 1.2, 'y': court_bottom_y + 1.2, 'label': '1'},  # Back right
+        2: {'x': center_x + court_top_width / 2 - 1.2, 'y': court_top_y - 1.2, 'label': '2'},  # Front right
+        3: {'x': center_x, 'y': court_top_y - 1.2, 'label': '3'},  # Front center
+        4: {'x': center_x - court_top_width / 2 + 1.2, 'y': court_top_y - 1.2, 'label': '4'},  # Front left
+        5: {'x': center_x - court_bottom_width / 2 + 1.2, 'y': court_bottom_y + 1.2, 'label': '5'},  # Back left
+        6: {'x': center_x, 'y': court_bottom_y + 1.2, 'label': '6'},  # Back center
+    }
+    
+    # Calculate players for each court position in this rotation
+    for court_pos in range(1, 7):
+        pos_data = position_coords[court_pos]
+        x = pos_data['x']
+        y = pos_data['y']
+        
+        # Calculate which base position is at this court position
+        base_pos = ((court_pos - rotation + 6) % 6) + 1
+        position_code = rotation_1_mapping.get(base_pos)
+        
+        if position_code:
+            # Check if this is a back row position where libero might play
+            is_back_row = court_pos in [1, 5, 6]
+            is_serving_pos = court_pos == 1
+            
+            # Libero replaces MB in back row (except when serving at pos 1)
+            if (position_code in ['MB1', 'MB2'] and is_back_row and 
+                libero_name and not is_serving_pos):
+                player_name = libero_name
+            else:
+                player_name = position_to_player.get(position_code, '')
+            
+            # Check if this is the setter position
+            is_setter = (position_code == 'S')
+            
+            # Truncate player name if too long
+            display_name = player_name if player_name else f"Pos {court_pos}"
+            if len(display_name) > 10:
+                display_name = display_name[:8] + ".."
+            
+            # Color and size based on setter position
+            if is_setter:
+                circle_color = "#e21b39"  # Brand red for setter
+                circle_size = 45
+            else:
+                circle_color = "#050d76"  # Brand dark blue for other players
+                circle_size = 40
+            
+            # Add circle
+            fig.add_trace(go.Scatter(
+                x=[x],
+                y=[y],
+                mode='markers+text',
+                marker=dict(
+                    size=circle_size,
+                    color=circle_color,
+                    line=dict(width=2, color='white'),
+                    opacity=0.9
+                ),
+                text=[pos_data['label']],
+                textposition="middle center",
+                textfont=dict(size=14, color='white', family='Arial Black'),
+                name=f"Position {court_pos}",
+                hovertext=f"Position {court_pos}<br>{display_name}",
+                hoverinfo='text',
+                showlegend=False
+            ))
+            
+            # Add player name below position number
+            if player_name:
+                fig.add_annotation(
+                    x=x,
+                    y=y - 0.7,
+                    text=display_name,
+                    showarrow=False,
+                    font=dict(size=9, color='white', family='Arial'),
+                    bgcolor=circle_color,
+                    bordercolor='white',
+                    borderwidth=1,
+                    borderpad=2,
+                    xref="x",
+                    yref="y"
+                )
+            
+            # Highlight setter position with ring
+            if is_setter:
+                fig.add_shape(
+                    type="circle",
+                    xref="x",
+                    yref="y",
+                    x0=x - 0.5,
+                    y0=y - 0.5,
+                    x1=x + 0.5,
+                    y1=y + 0.5,
+                    line=dict(color="#dbe7ff", width=2, dash="dash"),
+                    layer="above"
+                )
+    
+    # Update layout with proper margins and centering
+    fig.update_layout(
+        title=dict(
+            text=f"Rotation {rotation}",
+            font=dict(size=14, color='#050d76', family='Arial'),
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            range=[center_x - court_bottom_width * 0.65, center_x + court_bottom_width * 0.65],
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            title="",
+            fixedrange=True
+        ),
+        yaxis=dict(
+            range=[court_bottom_y - court_depth * 0.2, court_top_y + court_depth * 0.2],
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            title="",
+            scaleanchor="x",
+            scaleratio=1,
+            fixedrange=True
+        ),
+        height=height if height else 350,
+        showlegend=False,
+        paper_bgcolor='rgba(255,255,255,0)',
+        plot_bgcolor='rgba(255,255,255,0.98)',
+        margin=dict(l=5, r=5, t=50, b=10),
+        autosize=True
+    )
+    
+    # Apply beautiful theme but override margins to keep them small and centered
+    fig = apply_beautiful_theme(fig)
+    fig.update_layout(margin=dict(l=5, r=5, t=50, b=10), autosize=True)
+    
+    # Display the chart centered and constrained
+    st.plotly_chart(fig, use_container_width=True, config={
+        'displayModeBar': False,
+        'responsive': True,
+        'autosizable': True
+    })
 
 
 def _create_attacking_performance_charts(df: pd.DataFrame, analyzer: MatchAnalyzer, loader=None) -> None:

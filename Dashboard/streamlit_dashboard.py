@@ -1,21 +1,12 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import os
 from datetime import datetime
 import sys
 import warnings
 from pathlib import Path
-from PIL import Image
-import base64
-import tempfile
-import uuid
 import logging
-import time
 from typing import Optional, Dict, Any, List, Tuple
+import re
 
 # Suppress Plotly deprecation warnings
 warnings.filterwarnings('ignore', message='.*keyword arguments have been deprecated.*')
@@ -61,7 +52,7 @@ from ui.data_loading_helpers import (
 from utils.helpers import (
     filter_good_receptions, filter_good_digs, filter_block_touches,
     count_good_outcomes, is_good_reception, is_good_dig, is_good_block,
-    get_player_position
+    get_player_position, extract_date_from_filename
 )
 from ui.components import (
     get_position_full_name,
@@ -182,15 +173,8 @@ def load_match_data(uploaded_file) -> bool:
     filename = uploaded_file.name
     opponent_name = _extract_opponent_name(filename)
     
-    # Extract date from filename
-    import re
-    date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
-    match_date = None
-    if date_match:
-        try:
-            match_date = datetime.strptime(date_match.group(1), '%Y-%m-%d').date()
-        except (ValueError, AttributeError):
-            pass
+    # Extract date from filename using helper function
+    match_date = extract_date_from_filename(filename)
     
     # Store in session state for use in header
     SessionStateManager.set_opponent_name(opponent_name)
@@ -276,25 +260,6 @@ def load_match_data(uploaded_file) -> bool:
         if temp_converted_path:
             cleanup_temp_file(temp_converted_path)
 
-def toggle_info_attack() -> None:
-    """Toggle attack info display state."""
-    SessionStateManager.toggle_info('attack')
-
-def toggle_info_service() -> None:
-    """Toggle service info display state."""
-    SessionStateManager.toggle_info('service')
-
-def toggle_info_block() -> None:
-    """Toggle block info display state."""
-    SessionStateManager.toggle_info('block')
-
-def toggle_info_sideout() -> None:
-    """Toggle sideout info display state."""
-    SessionStateManager.toggle_info('sideout')
-
-
-# Note: display_player_image_and_info moved to ui/components.py
-
 
 def generate_insights(analyzer: MatchAnalyzer, team_stats: Dict[str, Any], 
                      TARGETS: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -368,11 +333,6 @@ def generate_insights(analyzer: MatchAnalyzer, team_stats: Dict[str, Any],
     insights.sort(key=lambda x: priority_order.get(x['priority'], 3))
     
     return insights
-
-
-# NOTE: generate_coach_insights, generate_coach_summary, and display_coach_insights_section 
-# have been moved to ui/insights.py to avoid circular import issues. 
-# They are now imported from ui.insights module. Do not add them back here.
 
 
 def generate_summary(insights, team_stats, TARGETS):
@@ -487,63 +447,6 @@ def display_insights_section(insights: List[Dict[str, Any]],
             elif insight['type'] == 'success':
                 st.info(f"**{insight['title']}**\n\n{insight.get('message', '')}")
 
-def get_performance_color(value: float, target_min: float, target_max: float, 
-                         target_optimal: Optional[float] = None) -> str:
-    """Return color based on performance level - only green or red"""
-    # If optimal target provided, use it; otherwise use midpoint of min/max
-    if target_optimal is None:
-        target_optimal = (target_min + target_max) / 2
-    
-    # Only return green or red - no yellow
-    if value >= target_optimal:
-        return "🟢"  # Meets or exceeds target
-    else:
-        return "🔴"  # Below target
-
-METRIC_DEFINITIONS = {
-    'attack_efficiency': {
-        'name': 'Attack Efficiency',
-        'formula': '(Kills - Errors) / Total Attack Attempts',
-        'description': 'Measures net scoring effectiveness. Positive values indicate more kills than errors.',
-        'display_as_percentage': True
-    },
-    'service_efficiency': {
-        'name': 'Service Efficiency',
-        'formula': '(Aces - Errors) / Total Service Attempts',
-        'description': 'Measures net service impact. Positive values indicate more aces than service errors.',
-        'display_as_percentage': True
-    },
-    'block_efficiency': {
-        'name': 'Block Efficiency',
-        'formula': '(Block Kills - Block Errors) / Total Block Attempts',
-        'description': 'Measures defensive scoring impact. Positive values indicate more block kills than errors.',
-        'display_as_percentage': True
-    },
-    'side_out_percentage': {
-        'name': 'Side-out Percentage',
-        'formula': 'Points Won When Receiving Serve / Total Rallies When Receiving Serve',
-        'description': 'Measures ability to score when receiving serve. Higher indicates better offensive conversion.',
-        'display_as_percentage': True
-    },
-    'reception_percentage': {
-        'name': 'Reception Percentage',
-        'formula': 'Good Receives / Total Reception Attempts',
-        'description': 'Measures reception quality - percentage of successful (good) receptions. Higher indicates better first contact.',
-        'display_as_percentage': True
-    },
-    'serve_point_percentage': {
-        'name': 'Serve Point Percentage',
-        'formula': 'Points Won When Serving / Total Service Rallies',
-        'description': 'Measures ability to score when serving. Higher indicates better service pressure and point conversion.',
-        'display_as_percentage': True
-    },
-    'first_ball_efficiency': {
-        'name': 'First Ball Efficiency',
-        'formula': 'Attack Kills After Perfect Pass / Total Attacks After Perfect Pass',
-        'description': 'Measures attack success rate after perfect reception (pass quality = 1). Higher indicates better offensive execution.',
-        'display_as_percentage': True
-    }
-}
 
 def main():
     """Main Streamlit app"""
@@ -560,13 +463,7 @@ def main():
             # Try to extract date from filename if match_date not available
             if not match_date:
                 filename = SessionStateManager.get_match_filename() or ''
-                import re
-                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', filename)
-                if date_match:
-                    try:
-                        match_date = datetime.strptime(date_match.group(1), '%Y-%m-%d').date()
-                    except (ValueError, AttributeError):
-                        pass
+                match_date = extract_date_from_filename(filename)
             
             # Format date as "24th of October 2025"
             if match_date:
@@ -653,7 +550,7 @@ def main():
     
     # Page options with icons for better visual navigation
     page_options = [
-        "📊 Team Overview", 
+        "📊 Team Overview",
         "👤 Player Analysis", 
         "⚖️ Player Comparison"
     ]
@@ -685,42 +582,6 @@ def main():
     page = page_name_map.get(selected_page, "Team Overview")
     
     st.sidebar.markdown("---")
-    
-    # Quick actions section with premium styling
-    st.sidebar.markdown("""
-    <div style="
-        margin: 16px 0 12px 0;
-        padding-bottom: 8px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    ">
-        <div style="
-            font-size: 14px;
-            font-weight: 600;
-            color: rgba(255, 255, 255, 0.7);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        ">
-            <span style="font-size: 18px;">⚡</span>
-            Quick Actions
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # MEDIUM PRIORITY 11: Help guide button with premium styling
-    if st.sidebar.button("📚 Help Guide", use_container_width=True, key="help_guide_btn"):
-        SessionStateManager.set_show_help_guide(True)
-    
-    # Display help guide if requested
-    if SessionStateManager.should_show_help_guide():
-        from utils.help_guide import display_help_guide
-        if st.sidebar.button("❌ Close Help", use_container_width=True):
-            SessionStateManager.set_show_help_guide(False)
-            st.rerun()
-        display_help_guide()
-        st.stop()
     
     # Initialize session state for match data
     if not SessionStateManager.is_match_loaded():
@@ -767,15 +628,6 @@ def main():
         display_player_comparison(analyzer, loader)
     
     # Footer with file uploader at the bottom
-    st.markdown("---")
-    st.markdown(
-        """
-        <div style='text-align: center; color: #666;'>
-            <p>🏐 Volleyball Team Analytics Dashboard | Built with Streamlit</p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
     
     # File uploader at the bottom
     st.markdown("### 📁 Upload New Match Data")

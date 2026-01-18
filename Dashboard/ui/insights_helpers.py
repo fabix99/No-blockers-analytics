@@ -5,7 +5,7 @@ Extracted from generate_insights() for better organization.
 from typing import Dict, Any, List, Optional
 import pandas as pd
 from match_analyzer import MatchAnalyzer
-from utils.helpers import filter_block_touches
+from utils.helpers import filter_block_touches, get_player_df
 
 
 def get_player_position(df: pd.DataFrame, player: str) -> Optional[str]:
@@ -18,7 +18,7 @@ def get_player_position(df: pd.DataFrame, player: str) -> Optional[str]:
     Returns:
         Position code or None
     """
-    player_data = df[df['player'] == player]
+    player_data = get_player_df(df, player)
     if len(player_data) > 0 and 'position' in player_data.columns:
         return player_data['position'].iloc[0]
     return None

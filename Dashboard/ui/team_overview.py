@@ -10,9 +10,8 @@ import pandas as pd
 from match_analyzer import MatchAnalyzer
 import performance_tracker as pt
 from config import KPI_TARGETS
-from ui.components import display_match_banner, display_executive_summary
+from ui.components import display_match_banner
 from ui.premium_components import (
-    display_performance_scorecard,
     display_match_result_premium,
     display_premium_metric_card,
     create_gauge_chart,
@@ -21,6 +20,7 @@ from ui.premium_components import (
 from utils.formatters import format_percentage, get_performance_delta_color, get_performance_color
 from utils.helpers import filter_good_receptions, filter_good_digs, filter_block_touches
 from ui.team_overview_helpers import _display_metric_styling
+from services.kpi_calculator import KPICalculator
 
 
 def display_team_overview(analyzer: MatchAnalyzer, loader=None) -> None:
@@ -80,11 +80,6 @@ def display_team_overview(analyzer: MatchAnalyzer, loader=None) -> None:
     from charts.team_charts import create_skill_performance_charts
     create_skill_performance_charts(analyzer, loader)
     
-    # ============================================================
-    # SECTION 5: Performance Trends & Consistency
-    # ============================================================
-    display_premium_section_header("Performance Trends & Consistency", "📉", "Set-by-set breakdowns")
-    _display_set_by_set_breakdowns(analyzer, kpis, loader)
     
 
 
@@ -166,31 +161,20 @@ def _display_premium_match_header(loader, kpis: Optional[Dict[str, Any]], target
         # Fallback to standard banner
         display_match_banner(loader)
     
-    # Display executive summary
-    try:
-        display_executive_summary(loader, kpis)
-    except Exception as e:
-        import logging
-        logging.error(f"Error displaying executive summary: {e}", exc_info=True)
-    
-    # Display performance scorecard if KPIs available
-    try:
-        if kpis:
-            # Pass the full targets dict - scorecard function handles the mapping
-            display_performance_scorecard(kpis, targets)
-    except Exception as e:
-        import logging
-        logging.error(f"Error displaying performance scorecard: {e}", exc_info=True)
+    # Executive Summary and Performance Scorecard removed per user request
 
 
 def _display_kpi_metrics(analyzer: MatchAnalyzer, team_stats: Dict[str, Any], 
                         kpis: Optional[Dict[str, Any]], targets: Dict[str, Any], loader=None) -> None:
-    """Display KPI metrics in organized groups: Scoring and Defense."""
+    """Display KPI metrics in organized groups: Scoring, Service, Defense & Transition, Attack and Net Performance."""
+    
+    # Initialize KPI Calculator for all calculations
+    kpi_calc = KPICalculator(analyzer=analyzer, loader=loader)
     
     # ==========================================
-    # SCORING METRICS (Point Production)
+    # SCORING SECTION
     # ==========================================
-    st.markdown('<div style="display: flex; align-items: center; margin-top: 8px; margin-bottom: 16px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">⚡ Scoring</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Point production efficiency</span></div>', unsafe_allow_html=True)
+    st.markdown('<div style="display: flex; align-items: center; margin-top: 2px; margin-bottom: 4px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">⚡ Scoring</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Point production efficiency</span></div>', unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns(3)
     
@@ -223,79 +207,42 @@ def _display_kpi_metrics(analyzer: MatchAnalyzer, team_stats: Dict[str, Any],
         )
     
     with col3:
-        attack_value = kpis['attack_kill_pct'] if kpis else team_stats.get('kill_percentage', 0.0)
-        if attack_value is None:
-            attack_value = _calculate_attack_kill_pct(analyzer)
-        attack_kills = kpis['totals']['attack_kills'] if kpis and 'totals' in kpis else 0
-        attack_attempts = kpis['totals']['attack_attempts'] if kpis and 'totals' in kpis else 0
-        _display_metric_card(
-            "Attack Kill %",
-            attack_value,
-            targets['kill_percentage'],
-            "Attack kills / attempts",
-            "info_attack",
-            numerator=attack_kills,
-            denominator=attack_attempts
-        )
+        # % of total points in the lead (momentum statistic)
+        try:
+            points_in_lead_pct = kpi_calc.calculate_points_in_lead_pct()
+            points_in_lead_count = kpi_calc.calculate_points_in_lead_count()
+            total_points = kpi_calc.calculate_total_points_count()
+            _display_metric_card(
+                "% Points in Lead",
+                points_in_lead_pct,
+                targets.get('points_in_lead', {'min': 0.40, 'max': 0.60, 'optimal': 0.50}),
+                "Points where team was leading / total points",
+                "info_points_in_lead",
+                numerator=points_in_lead_count,
+                denominator=total_points
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Error displaying points in lead metric: {e}", exc_info=True)
+            # Fallback display
+            st.markdown('**% Points in Lead**')
+            st.info("Data not available")
+    
+    # Add reduced margin after metrics
+    st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
+    
+    # Separator at end of Scoring section
+    st.markdown('<hr style="margin: 0.75rem 0; border: none; border-top: 1px solid #E0E0E0;">', unsafe_allow_html=True)
     
     # ==========================================
-    # DEFENSE & TRANSITION METRICS
+    # SERVICE SECTION
     # ==========================================
-    st.markdown('<div style="display: flex; align-items: center; margin-top: 24px; margin-bottom: 16px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">🛡️ Defense & Transition</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Quality of defensive contacts</span></div>', unsafe_allow_html=True)
+    st.markdown('<div style="display: flex; align-items: center; margin-top: 8px; margin-bottom: 4px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">🎾 Service</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Serve quality and consistency</span></div>', unsafe_allow_html=True)
     
-    col4, col5, col6 = st.columns(3)
+    col3, col4, col5 = st.columns(3)
     
-    with col4:
-        reception_quality = kpis['reception_quality'] if kpis else _calculate_reception_quality(analyzer, loader)
-        rec_good = kpis['totals']['reception_good'] if kpis and 'totals' in kpis else 0
-        rec_total = kpis['totals']['reception_total'] if kpis and 'totals' in kpis else 0
-        _display_metric_card(
-            "Reception Quality",
-            reception_quality,
-            targets['reception_quality'],
-            "Good receptions / total",
-            "info_reception",
-            numerator=rec_good,
-            denominator=rec_total
-        )
-    
-    with col5:
-        dig_rate = kpis['dig_rate'] if kpis else _calculate_dig_rate(analyzer, loader)
-        dig_good = kpis['totals']['dig_good'] if kpis and 'totals' in kpis else 0
-        dig_total = kpis['totals']['dig_total'] if kpis and 'totals' in kpis else 0
-        _display_metric_card(
-            "Dig Rate",
-            dig_rate,
-            targets['dig_rate'],
-            "Good digs / total",
-            "info_dig",
-            numerator=dig_good,
-            denominator=dig_total
-        )
-    
-    with col6:
-        block_kill_pct = kpis['block_kill_pct'] if kpis else _calculate_block_kill_pct(analyzer)
-        block_kills = kpis['totals']['block_kills'] if kpis and 'totals' in kpis else 0
-        block_attempts = kpis['totals']['block_attempts'] if kpis and 'totals' in kpis else 0
-        _display_metric_card(
-            "Block Kill %",
-            block_kill_pct,
-            targets['block_kill_percentage'],
-            "Block kills / attempts",
-            "info_block_kill",
-            numerator=block_kills,
-            denominator=block_attempts
-        )
-    
-    # ==========================================
-    # SERVICE METRICS
-    # ==========================================
-    st.markdown('<div style="display: flex; align-items: center; margin-top: 24px; margin-bottom: 16px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">🎾 Service</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Serve quality and consistency</span></div>', unsafe_allow_html=True)
-    
-    col7, col8, col9 = st.columns(3)
-    
-    with col7:
-        service_value = _calculate_serve_in_rate(analyzer, kpis)
+    with col3:
+        service_value = kpis['serve_in_rate'] if kpis else kpi_calc.calculate_serve_in_rate()
         service_aces = kpis['totals']['service_aces'] if kpis and 'totals' in kpis else 0
         service_good = kpis['totals']['service_good'] if kpis and 'totals' in kpis else 0
         serve_attempts = kpis['totals']['serve_attempts'] if kpis and 'totals' in kpis else 0
@@ -310,33 +257,150 @@ def _display_kpi_metrics(analyzer: MatchAnalyzer, team_stats: Dict[str, Any],
             denominator=serve_attempts
         )
     
-    with col8:
-        # Ace Rate
-        ace_rate = (service_aces / serve_attempts) if serve_attempts > 0 else 0.0
-        _display_metric_card(
-            "Ace Rate",
-            ace_rate,
-            {'min': 0.05, 'max': 0.15, 'optimal': 0.08},
-            "Aces / total serves",
-            "info_ace_rate",
-            numerator=service_aces,
-            denominator=serve_attempts
-        )
-    
-    with col9:
-        # Error Rate (lower is better)
+    with col4:
+        # Service Error Rate (lower is better)
         service_errors = kpis['totals'].get('service_errors', 0) if kpis and 'totals' in kpis else 0
         error_rate = (service_errors / serve_attempts) if serve_attempts > 0 else 0.0
         _display_metric_card(
-            "Service Error Rate",
+            "Service Errors",
             error_rate,
-            {'min': 0.05, 'max': 0.15, 'optimal': 0.10},
+            targets['service_error_rate'],
             "Errors / total serves",
             "info_serve_error",
             numerator=service_errors,
             denominator=serve_attempts,
             lower_is_better=True
         )
+    
+    with col5:
+        # Ace Rate
+        ace_rate = (service_aces / serve_attempts) if serve_attempts > 0 else 0.0
+        _display_metric_card(
+            "Aces",
+            ace_rate,
+            targets['ace_rate'],
+            "Aces / total serves",
+            "info_ace_rate",
+            numerator=service_aces,
+            denominator=serve_attempts
+        )
+    
+    # Separator at end of Service section
+    st.markdown('<hr style="margin: 0.75rem 0; border: none; border-top: 1px solid #E0E0E0;">', unsafe_allow_html=True)
+    
+    # ==========================================
+    # DEFENSE & TRANSITION SECTION
+    # ==========================================
+    st.markdown('<div style="display: flex; align-items: center; margin-top: 8px; margin-bottom: 4px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">🛡️ Defense & Transition</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Quality of defensive contacts</span></div>', unsafe_allow_html=True)
+    
+    col6, col7, col8 = st.columns(3)
+    
+    with col6:
+        reception_quality = kpis['reception_quality'] if kpis else kpi_calc.calculate_reception_quality()
+        rec_good = kpis['totals']['reception_good'] if kpis and 'totals' in kpis else 0
+        rec_total = kpis['totals']['reception_total'] if kpis and 'totals' in kpis else 0
+        _display_metric_card(
+            "Reception Quality",
+            reception_quality,
+            targets['reception_quality'],
+            "Good and perfect receptions / total",
+            "info_reception",
+            numerator=rec_good,
+            denominator=rec_total
+        )
+    
+    with col7:
+        dig_rate = kpis['dig_rate'] if kpis else kpi_calc.calculate_dig_rate()
+        dig_good = kpis['totals']['dig_good'] if kpis and 'totals' in kpis else 0
+        dig_total = kpis['totals']['dig_total'] if kpis and 'totals' in kpis else 0
+        _display_metric_card(
+            "Dig Rate %",
+            dig_rate,
+            targets['dig_rate'],
+            "Good and perfect digs / total",
+            "info_dig",
+            numerator=dig_good,
+            denominator=dig_total
+        )
+    
+    with col8:
+        # Reception Error % (lower is better)
+        reception_error_pct = kpi_calc.calculate_reception_error_pct(kpis=kpis)
+        rec_errors = kpis['totals'].get('reception_errors', 0) if kpis and 'totals' in kpis else 0
+        rec_total = kpis['totals']['reception_total'] if kpis and 'totals' in kpis else 0
+        _display_metric_card(
+            "Reception Error %",
+            reception_error_pct,
+            targets['reception_error_rate'],
+            "Reception errors / total receptions",
+            "info_reception_error",
+            numerator=rec_errors,
+            denominator=rec_total,
+            lower_is_better=True
+        )
+    
+    # Separator at end of Defense & Transition section
+    st.markdown('<hr style="margin: 0.75rem 0; border: none; border-top: 1px solid #E0E0E0;">', unsafe_allow_html=True)
+    
+    # ==========================================
+    # ATTACK AND NET PERFORMANCE SECTION
+    # ==========================================
+    st.markdown('<div style="display: flex; align-items: center; margin-top: 8px; margin-bottom: 4px;"><span style="font-size: 20px; font-weight: 700; color: #040C7B;">🎯 Attack and Net Performance</span><span style="font-size: 13px; color: #666; margin-left: 12px; font-weight: 400;">Attack efficiency and blocking</span></div>', unsafe_allow_html=True)
+    
+    col9, col10, col11 = st.columns(3)
+    
+    with col9:
+        attack_value = kpis['attack_kill_pct'] if kpis else team_stats.get('kill_percentage', 0.0)
+        if attack_value is None:
+            attack_value = kpi_calc.calculate_attack_kill_pct()
+        attack_kills = kpis['totals']['attack_kills'] if kpis and 'totals' in kpis else 0
+        attack_attempts = kpis['totals']['attack_attempts'] if kpis and 'totals' in kpis else 0
+        _display_metric_card(
+            "Attack Kill %",
+            attack_value,
+            targets['kill_percentage'],
+            "Attack kills / attempts",
+            "info_attack",
+            numerator=attack_kills,
+            denominator=attack_attempts
+        )
+    
+    with col10:
+        # Attack Error % (lower is better) - all error types / all attempts
+        attack_error_pct = kpi_calc.calculate_attack_error_pct(kpis=kpis)
+        attack_errors = kpis['totals'].get('attack_errors', 0) if kpis and 'totals' in kpis else 0
+        attack_attempts = kpis['totals']['attack_attempts'] if kpis and 'totals' in kpis else 0
+        _display_metric_card(
+            "Attack Error",
+            attack_error_pct,
+            targets['attack_error_rate'],
+            "All attack errors / total attempts",
+            "info_attack_error",
+            numerator=attack_errors,
+            denominator=attack_attempts,
+            lower_is_better=True
+        )
+    
+    with col11:
+        # Block % - block kill + block no kill / total block attempts
+        block_pct = kpi_calc.calculate_block_pct()
+        # Count from analyzer for accurate numerator
+        blocks = analyzer.match_data[analyzer.match_data['action'] == 'block']
+        block_kills = len(blocks[blocks['outcome'] == 'kill'])
+        block_no_kill = len(blocks[blocks['outcome'] == 'block_no_kill'])
+        block_attempts = len(blocks)
+        _display_metric_card(
+            "Block %",
+            block_pct,
+            targets['block_percentage'],
+            "(Block kills + Block no kill) / total attempts",
+            "info_block_pct",
+            numerator=block_kills + block_no_kill,
+            denominator=block_attempts
+        )
+    
+    # Separator at end of Attack and Net Performance section
+    st.markdown('<hr style="margin: 0.75rem 0; border: none; border-top: 1px solid #E0E0E0;">', unsafe_allow_html=True)
 
 
 def _display_metric_card(label: str, value: float, targets: Dict[str, float],
@@ -371,15 +435,17 @@ def _display_metric_card(label: str, value: float, targets: Dict[str, float],
     
     target_optimal = targets.get('optimal', (targets.get('min', 0) + targets.get('max', 0)) / 2)
     
-    # For lower_is_better metrics, invert the logic
-    if lower_is_better:
-        # For lower_is_better: value <= optimal is good (green), value > optimal is bad (red)
-        color = "🟢" if value <= target_optimal else "🔴"
-    else:
-        color = get_performance_color(value, targets['min'], targets['max'], target_optimal)
+    # Create label with info button for formula (using columns for layout)
+    label_col, info_col = st.columns([11, 1])
+    with label_col:
+        st.markdown(f'**{label}**', unsafe_allow_html=True)
+    with info_col:
+        if st.button("ℹ️", key=f"info_btn_{info_key}", help="Click to show/hide formula", use_container_width=False, type="secondary"):
+            st.session_state[f'show_formula_{info_key}'] = not st.session_state.get(f'show_formula_{info_key}', False)
     
-    # Create label (no info button needed - definition is shown below)
-    st.markdown(f'**{label} {color}**', unsafe_allow_html=True)
+    # Display formula if toggled on
+    if st.session_state.get(f'show_formula_{info_key}', False):
+        st.caption(f"📊 {formula}")
     
     # Calculate delta
     delta_vs_target = value - target_optimal
@@ -407,14 +473,15 @@ def _display_metric_card(label: str, value: float, targets: Dict[str, float],
         help_text += "\n\n(Lower is better - more efficient scoring)"
     
     # Use markdown to display value with HTML formatting (for smaller parenthetical text)
-    st.markdown(f'<div style="font-size: 2rem; font-weight: bold; line-height: 1.2; margin-bottom: 0.5rem;">{display_value}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size: 2rem; font-weight: bold; line-height: 1.1; margin-bottom: 0.05rem;">{display_value}</div>', unsafe_allow_html=True)
     
     # Display delta using a custom container
-    delta_html = f'<div style="font-size: 0.9rem; color: {"#28A745" if delta_color == "normal" and value >= target_optimal else "#DC3545" if delta_color == "inverse" else "#6C757D"}; margin-top: 0.25rem;">{delta_label}</div>'
+    delta_html = f'<div style="font-size: 0.9rem; color: {"#28A745" if delta_color == "normal" and value >= target_optimal else "#DC3545" if delta_color == "inverse" else "#6C757D"}; margin-top: 0.05rem; margin-bottom: 0.05rem;">{delta_label}</div>'
     st.markdown(delta_html, unsafe_allow_html=True)
     
-    # Display formula/definition permanently (not in a tooltip)
-    st.caption(f"📊 {formula}")
+    # Display formula/definition as collapsible
+    if st.session_state.get(f'show_formula_{info_key}', False):
+        st.caption(f"📊 {formula}")
     
     # Show warning if small sample size
     if denominator is not None:
@@ -423,120 +490,37 @@ def _display_metric_card(label: str, value: float, targets: Dict[str, float],
             st.caption(f"⚠️ {warning}")
 
 
-def _calculate_serve_in_rate(analyzer: MatchAnalyzer, kpis: Optional[Dict[str, Any]]) -> float:
-    """Calculate serve in rate."""
-    if kpis:
-        return kpis.get('serve_in_rate', 0.0)
-    serves = analyzer.match_data[analyzer.match_data['action'] == 'serve']
-    in_play = len(serves[serves['outcome'].isin(['ace', 'good'])])
-    attempts = len(serves)
-    return (in_play / attempts) if attempts > 0 else 0.0
 
 
-def _calculate_attack_kill_pct(analyzer: MatchAnalyzer) -> float:
-    """Calculate attack kill percentage."""
-    attacks = analyzer.match_data[analyzer.match_data['action'] == 'attack']
-    kills = len(attacks[attacks['outcome'] == 'kill'])
-    total = len(attacks)
-    return (kills / total) if total > 0 else 0.0
 
 
-def _calculate_dig_rate(analyzer: MatchAnalyzer, loader=None) -> float:
-    """Calculate dig rate from aggregated data (digs are not distributed as action rows)."""
-    # Digs are not created as individual action rows in the dataframe
-    # Must use aggregated data from loader if available
-    if loader is not None and hasattr(loader, 'player_data_by_set'):
-        total_dig_good = 0.0
-        total_dig_total = 0.0
-        for set_num in loader.player_data_by_set.keys():
-            for player in loader.player_data_by_set[set_num].keys():
-                stats = loader.player_data_by_set[set_num][player].get('stats', {})
-                total_dig_good += float(stats.get('Dig_Good', 0) or 0)
-                total_dig_total += float(stats.get('Dig_Total', 0) or 0)
-        return (total_dig_good / total_dig_total) if total_dig_total > 0 else 0.0
-    
-    # Fallback: try action rows (but this will be 0 since digs aren't created)
-    digs = analyzer.match_data[analyzer.match_data['action'] == 'dig']
-    good = len(filter_good_digs(digs))
-    total = len(digs)
-    return (good / total) if total > 0 else 0.0
 
 
-def _calculate_reception_quality(analyzer: MatchAnalyzer, loader=None) -> float:
-    """Calculate reception quality from aggregated data (more accurate)."""
-    # Use aggregated data from loader if available (more accurate)
-    if loader is not None and hasattr(loader, 'reception_data_by_rotation'):
-        total_rec_good = 0.0
-        total_rec_total = 0.0
-        for set_num in loader.reception_data_by_rotation.keys():
-            for rot_num in loader.reception_data_by_rotation[set_num].keys():
-                rot_data = loader.reception_data_by_rotation[set_num][rot_num]
-                total_rec_good += float(rot_data.get('good', 0) or 0)
-                total_rec_total += float(rot_data.get('total', 0) or 0)
-        return (total_rec_good / total_rec_total) if total_rec_total > 0 else 0.0
-    
-    # Fallback: count from action rows (less accurate due to distribution)
-    receives = analyzer.match_data[analyzer.match_data['action'] == 'receive']
-    good = len(filter_good_receptions(receives))
-    total = len(receives)
-    return (good / total) if total > 0 else 0.0
 
 
-def _calculate_block_kill_pct(analyzer: MatchAnalyzer) -> float:
-    """Calculate block kill percentage."""
-    blocks = analyzer.match_data[analyzer.match_data['action'] == 'block']
-    kills = len(blocks[blocks['outcome'] == 'kill'])
-    total = len(blocks)
-    return (kills / total) if total > 0 else 0.0
 
 
-def _calculate_avg_actions(analyzer: MatchAnalyzer, loader=None) -> float:
-    """Calculate average actions per point."""
-    from utils.helpers import calculate_total_points_from_loader
-    
-    # Calculate total points (reusable helper function)
-    total_points = calculate_total_points_from_loader(loader)
-    
-    if total_points > 0:
-        # Count total actions from aggregated data if available
-        total_actions = 0.0
-        if loader is not None and hasattr(loader, 'player_data_by_set'):
-            for set_num in loader.player_data_by_set.keys():
-                for player in loader.player_data_by_set[set_num].keys():
-                    stats = loader.player_data_by_set[set_num][player].get('stats', {})
-                    total_actions += (
-                        float(stats.get('Attack_Total', 0) or 0) +
-                        float(stats.get('Service_Total', 0) or 0) +
-                        float(stats.get('Block_Total', 0) or 0) +
-                        float(stats.get('Sets_Total', 0) or 0) +
-                        float(stats.get('Dig_Total', 0) or 0)
-                    )
-            # Add reception actions
-            if hasattr(loader, 'reception_data_by_rotation'):
-                for set_num in loader.reception_data_by_rotation.keys():
-                    for rot_num in loader.reception_data_by_rotation[set_num].keys():
-                        rot_data = loader.reception_data_by_rotation[set_num][rot_num]
-                        total_actions += float(rot_data.get('total', 0) or 0)
-        
-        if total_actions > 0:
-            return total_actions / total_points
-    
-    # Fallback: use action rows
-    df = analyzer.match_data
-    total_actions = len(df)
-    if total_actions == 0:
-        return 0.0
-    
-    # Recalculate total_points for fallback (in case loader didn't have data)
-    if total_points == 0:
-        total_points = calculate_total_points_from_loader(loader)
-    
-    if total_points > 0:
-        return total_actions / total_points
-    
-    # Final fallback: rough estimate
-    total_points = df['set_number'].nunique() * 25  # Rough estimate
-    return (total_actions / total_points) if total_points > 0 else 0.0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def _display_performance_scorecard(kpis: Optional[Dict[str, Any]], loader=None) -> None:
@@ -793,82 +777,121 @@ def _display_set_by_set_breakdowns(analyzer: MatchAnalyzer, kpis: Optional[Dict[
     
     st.markdown("### 📈 KPI Trends Across Sets")
     
-    # Get set-by-set data
-    set_attack = get_kpi_by_set(loader, 'attack_kill_pct')
-    set_serve = get_kpi_by_set(loader, 'serve_in_rate')
+    # Get set-by-set data for the new KPI list
+    set_serve_error = get_kpi_by_set(loader, 'serve_error_rate')
     set_rec = get_kpi_by_set(loader, 'reception_quality')
-    set_block = get_kpi_by_set(loader, 'block_kill_pct')
-    set_serving_rate = get_kpi_by_set(loader, 'break_point_rate')
-    set_receiving_rate = get_kpi_by_set(loader, 'side_out_efficiency')
+    set_dig = get_kpi_by_set(loader, 'dig_quality')
+    set_attack_kill = get_kpi_by_set(loader, 'attack_kill_pct')
+    set_attack_error = get_kpi_by_set(loader, 'attack_error_rate')
     
     # Create summary table
-    all_sets = sorted(set(set_attack.keys()) | set(set_serve.keys()) | set(set_rec.keys()))
+    all_sets = sorted(set(set_serve_error.keys()) | set(set_rec.keys()) | set(set_dig.keys()) | 
+                     set(set_attack_kill.keys()) | set(set_attack_error.keys()))
     
     if all_sets:
-        # Create line chart for KPI trends
-        fig = go.Figure()
+        # Spider web (radar) charts: One chart per set showing all 5 KPIs
+        # Normalize all metrics to 0-100 scale where higher is always better
+        # For error metrics, invert them (100 - error%) so higher = better
         
-        fig.add_trace(go.Scatter(
-            x=all_sets,
-            y=[set_serving_rate.get(s, 0.0) * 100 for s in all_sets],
-            mode='lines+markers',
-            name='Serving Point Rate',
-            line=dict(color=OUTCOME_COLORS['serving_rate'], width=3),
-            marker=dict(size=10)
-        ))
-        fig.add_trace(go.Scatter(
-            x=all_sets,
-            y=[set_receiving_rate.get(s, 0.0) * 100 for s in all_sets],
-            mode='lines+markers',
-            name='Receiving Point Rate',
-            line=dict(color=OUTCOME_COLORS['receiving_rate'], width=3),
-            marker=dict(size=10)
-        ))
-        fig.add_trace(go.Scatter(
-            x=all_sets,
-            y=[set_attack.get(s, 0.0) * 100 for s in all_sets],
-            mode='lines+markers',
-            name='Attack Kill %',
-            line=dict(color=OUTCOME_COLORS['attack_kill'], width=3),
-            marker=dict(size=10)
-        ))
-        fig.add_trace(go.Scatter(
-            x=all_sets,
-            y=[set_serve.get(s, 0.0) * 100 for s in all_sets],
-            mode='lines+markers',
-            name='Serve In-Rate',
-            line=dict(color=OUTCOME_COLORS['serve_in'], width=3),
-            marker=dict(size=10)
-        ))
-        fig.add_trace(go.Scatter(
-            x=all_sets,
-            y=[set_rec.get(s, 0.0) * 100 for s in all_sets],
-            mode='lines+markers',
-            name='Reception Quality',
-            line=dict(color=OUTCOME_COLORS['reception'], width=3),
-            marker=dict(size=10)
-        ))
-        fig.add_trace(go.Scatter(
-            x=all_sets,
-            y=[set_block.get(s, 0.0) * 100 for s in all_sets],
-            mode='lines+markers',
-            name='Block Kill %',
-            line=dict(color=OUTCOME_COLORS['block_kill'], width=3),
-            marker=dict(size=10)
-        ))
+        # Determine layout based on number of sets
+        num_sets = len(all_sets)
+        if num_sets <= 3:
+            cols = st.columns(num_sets)
+            rows = [all_sets]
+        elif num_sets == 4:
+            cols = st.columns(2)
+            rows = [all_sets[:2], all_sets[2:]]
+        else:  # 5 or more
+            cols = st.columns(3)
+            rows = [all_sets[:3], all_sets[3:]]
         
-        fig.update_layout(
-            title="KPI Trends Across Sets",
-            xaxis_title="Set Number",
-            yaxis_title="Percentage (%)",
-            height=CHART_HEIGHTS['line'],
-            hovermode='x unified',
-            legend=dict(orientation="v", yanchor="top", y=1, xanchor="right", x=1.02),
-            xaxis=dict(tickfont=dict(color='#050d76'), dtick=1),
-            yaxis=dict(tickfont=dict(color='#050d76'), tickformat='.0f')
-        )
-        fig = apply_beautiful_theme(fig, "KPI Trends Across Sets")
-        st.plotly_chart(fig, use_container_width=True, config=plotly_config, key="kpi_trends_sets")
+        # Create radar chart for each set
+        for row_idx, row_sets in enumerate(rows):
+            if row_idx > 0:
+                st.markdown("<br>", unsafe_allow_html=True)
+            
+            row_cols = st.columns(len(row_sets)) if len(row_sets) <= 3 else st.columns(3)
+            
+            for col_idx, set_num in enumerate(row_sets):
+                with row_cols[col_idx if len(row_sets) <= 3 else col_idx % 3]:
+                    # Get values for this set
+                    serve_error_val = set_serve_error.get(set_num, 0.0) * 100
+                    rec_val = set_rec.get(set_num, 0.0) * 100
+                    dig_val = set_dig.get(set_num, 0.0) * 100
+                    attack_kill_val = set_attack_kill.get(set_num, 0.0) * 100
+                    attack_error_val = set_attack_error.get(set_num, 0.0) * 100
+                    
+                    # Normalize: For error metrics, invert so higher = better (100 - error%)
+                    # For quality metrics, use as-is
+                    normalized_values = [
+                        100 - serve_error_val,  # Serve Error % inverted (lower error = higher score)
+                        rec_val,                 # Reception Quality (higher = better)
+                        dig_val,                 # Dig Quality (higher = better)
+                        attack_kill_val,         # Attack Kill % (higher = better)
+                        100 - attack_error_val   # Attack Error % inverted (lower error = higher score)
+                    ]
+                    
+                    # KPI labels in order
+                    kpi_labels = [
+                        'Serve Error %',
+                        'Reception Quality',
+                        'Dig Quality',
+                        'Attack Kill %',
+                        'Attack Error %'
+                    ]
+                    
+                    # Create radar chart with actual values for hover
+                    actual_values = [
+                        serve_error_val,   # Show actual error %
+                        rec_val,           # Reception Quality
+                        dig_val,           # Dig Quality
+                        attack_kill_val,   # Attack Kill %
+                        attack_error_val   # Show actual error %
+                    ]
+                    
+                    fig = go.Figure()
+                    
+                    fig.add_trace(go.Scatterpolar(
+                        r=normalized_values,
+                        theta=kpi_labels,
+                        fill='toself',
+                        name=f'Set {set_num}',
+                        line=dict(color='#040C7B', width=2.5),
+                        marker=dict(size=8, color='#040C7B'),
+                        hovertemplate='<b>%{theta}</b><br>Value: %{customdata:.1f}%<extra></extra>',
+                        customdata=actual_values
+                    ))
+                    
+                    fig.update_layout(
+                        polar=dict(
+                            radialaxis=dict(
+                                visible=True,
+                                range=[0, 100],
+                                tickfont=dict(size=10, color='#050d76'),
+                                gridcolor='#E8F4F8',
+                                linecolor='#BDC3C7',
+                                tickmode='linear',
+                                tick0=0,
+                                dtick=20
+                            ),
+                            angularaxis=dict(
+                                tickfont=dict(size=11, color='#050d76'),
+                                linecolor='#BDC3C7'
+                            )
+                        ),
+                        title=dict(
+                            text=f"Set {set_num}",
+                            font=dict(size=16, color='#040C7B', family='Inter, sans-serif'),
+                            x=0.5,
+                            xanchor='center'
+                        ),
+                        height=350,
+                        showlegend=False,
+                        margin=dict(l=20, r=20, t=50, b=20),
+                        paper_bgcolor='rgba(255,255,255,0)',
+                        plot_bgcolor='rgba(255,255,255,0.95)'
+                    )
+                    st.plotly_chart(fig, use_container_width=True, config=plotly_config, key=f"radar_set_{set_num}")
     else:
         st.info("No set-by-set data available")
 

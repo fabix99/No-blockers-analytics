@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 from match_analyzer import MatchAnalyzer
 from config import CHART_COLORS, OUTCOME_COLORS, CHART_HEIGHTS
 from charts.utils import apply_beautiful_theme, plotly_config
+from utils.helpers import get_player_df
 
 
 def get_played_sets(df: pd.DataFrame, loader=None) -> List[int]:
@@ -29,7 +30,7 @@ def create_player_charts(analyzer: MatchAnalyzer, player_name: str, loader=None)
         loader: Optional ExcelMatchLoader instance for detecting played sets
     """
     df = analyzer.match_data
-    player_df = df[df['player'] == player_name]
+    player_df = get_player_df(df, player_name)
     
     # Filter player data to only played sets
     played_sets = get_played_sets(df, loader)
@@ -42,29 +43,39 @@ def create_player_charts(analyzer: MatchAnalyzer, player_name: str, loader=None)
     
     st.markdown("### 📊 Player Performance Charts")
     
-    # Position-specific charts
-    if position and (position.startswith('OH') or position == 'OPP' or position.startswith('MB')):
-        # Attackers: Show attack-specific charts
-        _create_attacker_specific_charts(player_df, analyzer, player_name, loader)
-    elif position == 'S' or (position and 'setter' in position.lower()):
-        # Setters: Show setting-specific charts
+    # For setters: Show generic charts first, then setting-specific
+    is_setter = position == 'S' or (position and 'setter' in position.lower())
+    
+    if is_setter:
+        # Generic charts first for setters (overall numbers)
+        col1, col2 = st.columns(2)
+        with col1:
+            _create_action_distribution_chart(player_df)
+        with col2:
+            _create_outcome_distribution_chart(player_df)
+        
+        # Then setting-specific charts
         _create_setter_specific_charts(player_df, analyzer, player_name, loader)
-    elif position == 'L':
-        # Liberos: Show reception/dig-specific charts
-        _create_libero_specific_charts(player_df, analyzer, player_name, loader)
+    else:
+        # For other positions: Position-specific charts first
+        if position and (position.startswith('OH') or position == 'OPP' or position.startswith('MB')):
+            # Attackers: Show attack-specific charts
+            _create_attacker_specific_charts(player_df, analyzer, player_name, loader)
+        elif position == 'L':
+            # Liberos: Show reception/dig-specific charts
+            _create_libero_specific_charts(player_df, analyzer, player_name, loader)
+        
+        # Generic charts (for non-setters)
+        col1, col2 = st.columns(2)
+        with col1:
+            _create_action_distribution_chart(player_df)
+        with col2:
+            _create_outcome_distribution_chart(player_df)
     
-    # Generic charts (for all positions)
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        _create_action_distribution_chart(player_df)
-    
-    with col2:
-        _create_outcome_distribution_chart(player_df)
-    
-    # Performance by set (enhanced)
-    st.markdown("### 🎯 Performance by Set")
-    _create_performance_by_set_charts(player_df, analyzer, player_name, loader)
+    # Performance by set (enhanced) - skip for liberos (redundant)
+    if position != 'L':
+        st.markdown("### 🎯 Performance by Set")
+        _create_performance_by_set_charts(player_df, analyzer, player_name, loader)
     
     # Add Attack Outcome Breakdown for attackers
     if position and (position.startswith('OH') or position == 'OPP' or position.startswith('MB')):
@@ -73,28 +84,30 @@ def create_player_charts(analyzer: MatchAnalyzer, player_name: str, loader=None)
     # Add Block Efficiency Trends for blockers (MB, OPP, OH)
     if position and (position.startswith('MB') or position == 'OPP' or position.startswith('OH')):
         _create_block_efficiency_trends(player_df, player_name)
+        _create_block_breakdown_by_set(player_df, player_name)
     
     # Add Reception & Dig Performance charts - grouped together for better organization
-    # Show for any player with reception/dig data (including setters and liberos)
-    receives = player_df[player_df['action'] == 'receive']
-    digs = player_df[player_df['action'] == 'dig']
-    
-    if len(receives) > 0 or len(digs) > 0:
-        st.markdown("### 📥 Reception & Defense Performance")
+    # Show for any player with reception/dig data (including setters, but NOT liberos - redundant)
+    if position != 'L':
+        receives = player_df[player_df['action'] == 'receive']
+        digs = player_df[player_df['action'] == 'dig']
         
-        if len(receives) > 0 and len(digs) > 0:
-            # Both charts side by side
-            col1, col2 = st.columns(2)
-            with col1:
+        if len(receives) > 0 or len(digs) > 0:
+            st.markdown("### 📥 Reception & Defense Performance")
+            
+            if len(receives) > 0 and len(digs) > 0:
+                # Both charts side by side
+                col1, col2 = st.columns(2)
+                with col1:
+                    _create_reception_performance_chart(receives, player_name)
+                with col2:
+                    _create_dig_performance_chart(digs, player_name)
+            elif len(receives) > 0:
+                # Only reception chart
                 _create_reception_performance_chart(receives, player_name)
-            with col2:
+            elif len(digs) > 0:
+                # Only dig chart
                 _create_dig_performance_chart(digs, player_name)
-        elif len(receives) > 0:
-            # Only reception chart
-            _create_reception_performance_chart(receives, player_name)
-        elif len(digs) > 0:
-            # Only dig chart
-            _create_dig_performance_chart(digs, player_name)
 
 
 def _create_attack_outcome_breakdown(player_df: pd.DataFrame, player_name: str) -> None:
@@ -204,6 +217,109 @@ def _create_block_efficiency_trends(player_df: pd.DataFrame, player_name: str) -
     )
     fig = apply_beautiful_theme(fig, "Block Kill % by Set")
     st.plotly_chart(fig, use_container_width=True, config=plotly_config, key=f"player_block_trends_{player_name}")
+
+
+def _create_block_breakdown_by_set(player_df: pd.DataFrame, player_name: str) -> None:
+    """Create stacked bar chart showing all block outcomes by set (kill, block_no_kill, touch, no_touch, error)."""
+    blocks = player_df[player_df['action'] == 'block']
+    
+    if len(blocks) == 0:
+        return
+    
+    st.markdown("#### 🛡️ Block Breakdown by Set")
+    
+    played_sets = sorted(player_df['set_number'].unique())
+    
+    # Get block outcomes by set
+    block_details_by_set = {}
+    for set_num in played_sets:
+        set_blocks = blocks[blocks['set_number'] == set_num]
+        block_details_by_set[set_num] = {
+            'kill': len(set_blocks[set_blocks['outcome'] == 'kill']),
+            'block_no_kill': len(set_blocks[set_blocks['outcome'] == 'block_no_kill']),
+            'touch': len(set_blocks[set_blocks['outcome'] == 'touch']),
+            'no_touch': len(set_blocks[set_blocks['outcome'] == 'no_touch']),
+            'error': len(set_blocks[set_blocks['outcome'] == 'error'])
+        }
+    
+    # Check if there's any block data
+    if not any(sum(v.values()) > 0 for v in block_details_by_set.values()):
+        st.info("No block data available")
+        return
+    
+    # Create stacked bar chart - same color scheme as team blocking charts
+    fig = go.Figure()
+    
+    # Kills (green)
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in played_sets],
+        y=[block_details_by_set.get(s, {}).get('kill', 0) for s in played_sets],
+        name='Kills',
+        marker_color=OUTCOME_COLORS['kill'],
+        text=[block_details_by_set.get(s, {}).get('kill', 0) for s in played_sets],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # Block - No Kill (light green - better than touch)
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in played_sets],
+        y=[block_details_by_set.get(s, {}).get('block_no_kill', 0) for s in played_sets],
+        name='Block - No Kill',
+        marker_color=OUTCOME_COLORS['good'],
+        text=[block_details_by_set.get(s, {}).get('block_no_kill', 0) for s in played_sets],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # Touches (orange)
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in played_sets],
+        y=[block_details_by_set.get(s, {}).get('touch', 0) for s in played_sets],
+        name='Touches',
+        marker_color=OUTCOME_COLORS.get('block_no_kill', '#FF9800'),
+        text=[block_details_by_set.get(s, {}).get('touch', 0) for s in played_sets],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # No Touch (gray)
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in played_sets],
+        y=[block_details_by_set.get(s, {}).get('no_touch', 0) for s in played_sets],
+        name='No Touch',
+        marker_color=OUTCOME_COLORS.get('no_touch', '#999999'),
+        text=[block_details_by_set.get(s, {}).get('no_touch', 0) for s in played_sets],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # Errors (red)
+    fig.add_trace(go.Bar(
+        x=[f"Set {s}" for s in played_sets],
+        y=[block_details_by_set.get(s, {}).get('error', 0) for s in played_sets],
+        name='Errors',
+        marker_color=OUTCOME_COLORS['error'],
+        text=[block_details_by_set.get(s, {}).get('error', 0) for s in played_sets],
+        textposition='inside',
+        textfont=dict(size=9, color='#FFFFFF')
+    ))
+    
+    # Calculate total block attempts for sample size
+    total_block_attempts = sum(sum(block_details_by_set.get(s, {}).values()) for s in played_sets)
+    
+    fig.update_layout(
+        title=f"Block Outcomes by Set (n={total_block_attempts} blocks)",
+        xaxis_title="Set Number",
+        yaxis_title="Count",
+        barmode='stack',
+        height=CHART_HEIGHTS['medium'],
+        xaxis=dict(dtick=1, tickfont=dict(color='#050d76')),
+        yaxis=dict(tickfont=dict(color='#050d76')),
+        legend=dict(orientation="v", yanchor="top", y=1, xanchor="right", x=1.02)
+    )
+    fig = apply_beautiful_theme(fig, "Block Outcomes by Set")
+    st.plotly_chart(fig, use_container_width=True, config=plotly_config, key=f"player_block_breakdown_{player_name}")
 
 
 def _create_reception_performance_chart(receives: pd.DataFrame, player_name: str) -> None:
@@ -417,8 +533,8 @@ def _create_outcome_distribution_chart(player_df: pd.DataFrame) -> None:
         'blocked': 'Errors',
         'out': 'Errors',
         'net': 'Errors',
-        'no_touch': 'No Touch',
-        'block_no_kill': 'Block - No Kill'
+        'no_touch': 'Neutral',
+        'block_no_kill': 'Neutral'
     }
     
     grouped_counts = {'Kills': 0, 'Positive': 0, 'Neutral': 0, 'Errors': 0}
